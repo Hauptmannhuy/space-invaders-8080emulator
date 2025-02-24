@@ -283,7 +283,7 @@ func GetInstruction(code byte) string {
 	return instruction
 }
 
-func GetRegister(instruction string, code byte) string {
+func GetDestination(instruction string, code byte) string {
 
 	regs := map[string]map[byte]string{
 		"LXI":  lxi,
