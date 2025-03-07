@@ -10,7 +10,7 @@ type cpu struct {
 	memory         *memory
 	regs           *registers
 	flags          *flags
-	instructionSet map[string]func() uint16
+	instructionSet map[string]func() int
 	romBuffer      []byte
 	opcode         *opcode
 }
@@ -33,11 +33,13 @@ type opcode struct {
 }
 
 func initCPU() *cpu {
-	return &cpu{
+	cpu := &cpu{
 		memory: &memory{},
 		regs:   &registers{},
 		flags:  &flags{},
 	}
+	cpu.instructionSet = initOpcodeSet(cpu)
+	return cpu
 }
 
 func initOpcodeSet(cpu *cpu) map[string]func() int {
@@ -47,6 +49,7 @@ func initOpcodeSet(cpu *cpu) map[string]func() int {
 		// "STAX":  func() {},
 		// "INX":   func() {},
 		// "INR B": func() {},
+		"MOV": cpu.mov,
 	}
 }
 
@@ -54,7 +57,7 @@ func (cpu *cpu) step() {
 	cpu.opcode = getOpcode(cpu.romBuffer[cpu.regs.pc])
 	handleFunc := cpu.instructionSet[cpu.opcode.opcodeName]
 	n := handleFunc()
-	cpu.regs.pc += n
+	cpu.regs.pc += uint16(n)
 }
 
 func getOpcode(code byte) *opcode {
@@ -68,7 +71,7 @@ func getOpcode(code byte) *opcode {
 	}
 }
 
-func (regs *registers) writeRegs(reg string, b1, b2 uint8) {
+func (regs *registers) writePairRegs(reg string, b1, b2 uint8) {
 	switch reg {
 	case "B":
 		regs.b = b1
@@ -150,7 +153,7 @@ func (cpu *cpu) nop() int {
 func (cpu *cpu) lxi() int {
 	b1 := cpu.readROM(2)
 	b2 := cpu.readROM(1)
-	cpu.regs.writeRegs(cpu.opcode.operand, b1, b2)
+	cpu.regs.writePairRegs(cpu.opcode.operand, b1, b2)
 	return 3
 }
 
@@ -167,7 +170,7 @@ func (cpu *cpu) inx() int {
 	bits := cpu.regs.getPair(reg) + 1
 	b1 := uint8(bits >> 8)
 	b2 := uint8(bits & 0xff)
-	cpu.regs.writeRegs(reg, b1, b2)
+	cpu.regs.writePairRegs(reg, b1, b2)
 	return 1
 }
 
@@ -235,6 +238,126 @@ func (cpu *cpu) dad() int {
 	} else {
 		cpu.flags.cy = 0
 	}
+	return 1
+}
+
+func (cpu *cpu) ldax() int {
+	reg := cpu.opcode.operand
+	pairVal := cpu.regs.getPair(reg)
+	memVal := cpu.memory.read(pairVal)
+	cpu.regs.updateReg(reg, memVal)
+	return 1
+}
+
+func (cpu *cpu) dcx() int {
+	pairVal := cpu.regs.getPair(cpu.opcode.operand) - 1
+	cpu.regs.writePairRegs(cpu.opcode.operand, uint8(pairVal>>8), uint8(pairVal&0xff))
+	return 1
+}
+
+func (cpu *cpu) rrc() int {
+	regVal := cpu.regs.getReg(cpu.opcode.operand)
+	shifted := regVal >> 1
+	prev0Bit := regVal & 1
+	shifted = (shifted & 0x7f) | (prev0Bit << 7)
+	cpu.regs.updateReg(cpu.opcode.operand, shifted)
+	cpu.flags.cy = prev0Bit
+	return 1
+}
+
+// A = A << 1; bit 0 = prev CY; CY = prev bit 7
+func (cpu *cpu) ral() int {
+	regVal := cpu.regs.getReg(cpu.opcode.operand)
+	newVal := regVal << 1
+	newVal = newVal | cpu.flags.cy
+	cpu.flags.cy = regVal >> 7 & 1
+	cpu.regs.updateReg(cpu.opcode.operand, newVal)
+	return 1
+}
+
+// A = A >> 1; bit 7 = prev bit 7; CY = prev bit 0
+func (cpu *cpu) rar() int {
+	regVal := cpu.regs.a
+	prevBit7 := regVal & (1 << 7)
+	newVal := (prevBit7 | regVal>>1)
+	cpu.regs.a = newVal
+	cpu.flags.cy = regVal & 1
+	return 1
+}
+
+// some I/O thing
+func (cpu *cpu) rim() int {
+	return 1
+}
+
+func (cpu *cpu) shld() int {
+	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+	cpu.memory.write(addr, cpu.regs.l)
+	cpu.memory.write(addr+1, cpu.regs.h)
+	return 3
+}
+
+func (cpu *cpu) lhld() int {
+	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+	l := cpu.memory.read(addr)
+	h := cpu.memory.read(addr + 1)
+	cpu.regs.l = l
+	cpu.regs.h = h
+	return 3
+}
+
+func (cpu *cpu) cma() int {
+	cpu.regs.a = ^cpu.regs.a
+	return 1
+}
+
+// some useless command
+func (cpu *cpu) daa() int {
+	return 1
+}
+
+// special
+func (cpu *cpu) sim() int {
+	return 1
+}
+
+func (cpu *cpu) sta() int {
+	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+	cpu.memory.write(addr, cpu.regs.a)
+	return 3
+}
+
+func (cpu *cpu) stc() int {
+	cpu.flags.cy = 1
+	return 1
+}
+
+func (cpu *cpu) lda() int {
+	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+	cpu.regs.a = cpu.memory.read(addr)
+	return 3
+}
+
+func (cpu *cpu) cmc() int {
+	cpu.flags.cy = ^cpu.flags.cy
+	return 1
+}
+
+func (cpu *cpu) mov() int {
+	destReg := string(cpu.opcode.operand[0])
+	sourceReg := string(cpu.opcode.operand[len(cpu.opcode.operand)-1])
+	if destReg == "M" {
+		addr := cpu.regs.getPair(destReg)
+		cpu.memory.write(addr, cpu.regs.getReg(sourceReg))
+		return 1
+	} else if sourceReg == "M" {
+		addr := cpu.regs.getPair(sourceReg)
+		memVal := cpu.memory.read(addr)
+		cpu.regs.updateReg(destReg, memVal)
+		return 1
+	}
+
+	cpu.regs.updateReg(destReg, cpu.regs.getReg(sourceReg))
 	return 1
 }
 
