@@ -1,5 +1,24 @@
 package decoder
 
+type Opcode struct {
+	Code        byte
+	Instruction string
+	Operand     string
+	Condition   string
+}
+
+// conditions
+const (
+	NotZero    = "NZ"
+	Zero       = "Z"
+	NoCarry    = "NC"
+	Carry      = "C"
+	ParityOdd  = "PO"
+	ParityEven = "PE"
+	Positive   = "P"
+	Minus      = "M"
+)
+
 var lxi = map[byte]string{
 	0x01: "B",
 	0x11: "D",
@@ -124,7 +143,7 @@ var rst = map[byte]string{
 	0xe7: "4", 0xef: "5", 0xf7: "6", 0xff: "7",
 }
 
-func GetInstruction(code byte) string {
+func GetInstruction(code byte) *Opcode {
 	var instruction string
 	switch code {
 	case 0x00:
@@ -280,7 +299,32 @@ func GetInstruction(code byte) string {
 			instruction = "RST"
 		}
 	}
-	return instruction
+	opcode := &Opcode{
+		Code:        code,
+		Instruction: instruction,
+		Operand:     GetDestination(instruction, code),
+	}
+	if code >= 0xc0 && code <= 0xff {
+		setConditionOpcode(opcode)
+	}
+	return opcode
+}
+
+func setConditionOpcode(opcode *Opcode) {
+	condition := opcode.Instruction[1:]
+	if condition == NotZero || condition == Zero || condition == NoCarry || condition == Carry || condition == ParityOdd || condition == ParityEven || condition == Minus || condition == Positive {
+		opcode.Condition = condition
+		var condInstruct string
+		switch string(opcode.Instruction[0]) {
+		case "J":
+			condInstruct = "JMP"
+		case "R":
+			condInstruct = "RET"
+		case "C":
+			condInstruct = "CALL"
+		}
+		opcode.Instruction = condInstruct
+	}
 }
 
 func GetDestination(instruction string, code byte) string {
