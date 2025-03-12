@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -78,4 +79,65 @@ func TestMov(t *testing.T) {
 			t.Errorf("Expected value should be %d, got %d", desiredVal, res)
 		}
 	})
+}
+
+func TestAdd(t *testing.T) {
+	cpuState := initCPU()
+	cpuState.romBuffer = []byte{
+		0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86,
+		0x87,
+	}
+	regNames := []string{"B", "C", "D", "E", "H", "L", "M"}
+	expected := []uint8{4, 5, 6, 7, 8, 9, 8}
+	cpuState.regs.b = 4
+	cpuState.regs.c = 1
+	cpuState.regs.d = 1
+	cpuState.regs.e = 1
+	cpuState.regs.h = 1
+	cpuState.regs.l = 1
+	addr := cpuState.regs.getPair("M")
+	cpuState.memory.write(addr, 255)
+	for i := 0; i < len(regNames); i++ {
+		regName := regNames[i]
+		opcodeName := fmt.Sprintf("ADD %s", regName)
+		t.Run(opcodeName, func(t *testing.T) {
+			cpuState.step()
+			accumRegVal := cpuState.regs.a
+			if accumRegVal != expected[i] {
+				fmt.Println(i)
+				t.Errorf("Expected value should be %d, got %d", expected[i], accumRegVal)
+			}
+		})
+	}
+}
+
+func TestCPI(t *testing.T) {
+	cpuState := initCPU()
+	cpuState.romBuffer = []byte{0xfe, 0x1, 0xfe, 129, 0xfe, 0}
+	cpuState.regs.a = 0x2
+	s := []uint8{0, 1, 0}
+	z := []uint8{0, 0, 1}
+	p := []uint8{0, 1, 0}
+	var j int
+	var i int
+	for i < 4 {
+		n := cpuState.romBuffer[i]
+		name := fmt.Sprintf("CPI %d", n)
+		t.Run(name, func(t *testing.T) {
+			cpuState.step()
+			if cpuState.flags.z != z[j] {
+				t.Errorf("Zero flag should be %d, got %d", z[j], cpuState.flags.z)
+			}
+
+			if cpuState.flags.s != s[j] {
+				t.Errorf("Sign flag should be %d, got %d", s[j], cpuState.flags.s)
+			}
+
+			if cpuState.flags.p != p[j] {
+				t.Errorf("Parity flag should be %d, got %d", p[j], cpuState.flags.p)
+			}
+			j += 1
+			i += 2
+		})
+	}
 }

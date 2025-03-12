@@ -15,8 +15,9 @@ func disassebmle(buffer []byte, pc int) int {
 	code := buffer[pc]
 	opcodes := 1
 	fmt.Printf("%04x ", pc)
-	instruction := decoder.GetInstruction(code)
-	register := decoder.GetDestination(instruction, code)
+	opcode := decoder.GetInstruction(code)
+	register := decoder.GetDestination(opcode.Instruction, code)
+	instruction := opcode.Instruction
 	switch instruction {
 	case "NOP":
 		fmt.Printf("NOP")

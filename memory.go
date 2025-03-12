@@ -11,6 +11,6 @@ func (mem *memory) read(addr uint16) uint8 {
 	return mem[addr]
 }
 
-func make16bit(b1, b2 uint8) uint16 {
-	return (uint16(b1) << 8) | uint16(b2)
+func make16bit(hi, lo uint8) uint16 {
+	return (uint16(hi) << 8) | uint16(lo)
 }
