@@ -89,7 +89,7 @@ func (regs *registers) getPair(dest string) uint16 {
 		if dest == "HL" || dest == "M" || dest == "H" {
 			return make16bit(regs.h, regs.l)
 		}
-		log.Fatal()
+		log.Fatal("Unknown pair")
 	}
 	return 0
 }
@@ -541,6 +541,68 @@ func (cpu *cpu) ret() int {
 		cpu.regs.pc = newPC
 	}
 
+	return 1
+}
+
+func (cpu *cpu) push() int {
+	sp := cpu.regs.sp
+	switch cpu.opcode.Operand {
+	case "B":
+		cpu.memory.write(sp-2, cpu.regs.c)
+		cpu.memory.write(sp-1, cpu.regs.b)
+	case "D":
+		cpu.memory.write(sp-2, cpu.regs.e)
+		cpu.memory.write(sp-1, cpu.regs.d)
+	case "H":
+		cpu.memory.write(sp-2, cpu.regs.l)
+		cpu.memory.write(sp-1, cpu.regs.h)
+	case "PSW":
+		cpu.memory.write(sp-2, cpu.flags.s|cpu.flags.z<<1|cpu.flags.ac<<2|cpu.flags.p<<3|cpu.flags.cy<<4)
+		cpu.memory.write(sp-1, cpu.regs.a)
+	}
+	cpu.regs.sp += 2
+	return 1
+}
+
+func (cpu *cpu) pop() int {
+	sp := cpu.regs.sp
+	switch cpu.opcode.Operand {
+	case "B":
+		cpu.regs.c = cpu.memory.read(sp)
+		cpu.regs.b = cpu.memory.read(sp + 1)
+	case "D":
+		cpu.regs.e = cpu.memory.read(sp)
+		cpu.regs.d = cpu.memory.read(sp + 1)
+	case "H":
+		cpu.regs.l = cpu.memory.read(sp)
+		cpu.regs.h = cpu.memory.read(sp + 1)
+	case "PSW":
+		psw := cpu.memory.read(sp)
+		cpu.flags.cy = psw & 0x1
+		cpu.flags.p = (psw >> 2) & 0x1
+		cpu.flags.ac = (psw >> 4) & 0x1
+		cpu.flags.z = (psw >> 6) & 0x1
+		cpu.flags.s = (psw >> 7) & 0x1
+		cpu.regs.a = cpu.memory.read(sp + 1)
+	}
+	cpu.regs.sp += 2
+	return 1
+}
+
+func (cpu *cpu) sphl() int {
+	cpu.regs.sp = cpu.regs.getPair("HL")
+	return 1
+}
+
+func (cpu *cpu) xthl() int {
+	lVal := cpu.regs.l
+	hVal := cpu.regs.h
+	sp1Addr := cpu.regs.sp
+	sp2Addr := cpu.regs.sp + 1
+	cpu.regs.l = cpu.memory.read(cpu.regs.sp)
+	cpu.regs.h = cpu.memory.read(cpu.regs.sp + 1)
+	cpu.memory.write(sp1Addr, lVal)
+	cpu.memory.write(sp2Addr, hVal)
 	return 1
 }
 
