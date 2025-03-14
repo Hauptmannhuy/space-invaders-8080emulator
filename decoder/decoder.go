@@ -139,7 +139,7 @@ var push = map[byte]string{
 }
 
 var rst = map[byte]string{
-	0xc7: "1", 0xcf: "1", 0xd7: "2", 0xdf: "3",
+	0xc7: "0", 0xcf: "1", 0xd7: "2", 0xdf: "3",
 	0xe7: "4", 0xef: "5", 0xf7: "6", 0xff: "7",
 }
 
@@ -246,6 +246,10 @@ func GetInstruction(code byte) *Opcode {
 		instruction = "EI"
 	case 0xfc:
 		instruction = "CM"
+	case 0xd9:
+		instruction = "-"
+	case 0xcb:
+		instruction = "-"
 	default:
 		if code >= 0x01 && code <= 0x31 && code&0xF == 0x1 {
 			instruction = "LXI"
@@ -304,7 +308,7 @@ func GetInstruction(code byte) *Opcode {
 		Instruction: instruction,
 		Operand:     GetDestination(instruction, code),
 	}
-	if code >= 0xc0 && code <= 0xff {
+	if code != 0xd9 && code != 0xcb && code >= 0xc0 && code <= 0xff && (string(instruction[0]) == "J" || string(instruction[0]) == "R" || string(instruction[0]) == "C") {
 		setConditionOpcode(opcode)
 	}
 	return opcode
