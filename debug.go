@@ -37,8 +37,8 @@ func disassebmle(buffer []byte, pc int) int {
 		opcodes = 3
 	case "DAA":
 		fmt.Printf("DAA 0x%02x", code)
-	case "LHD":
-		fmt.Printf("LHD 0x%02x%02x", buffer[pc+2], buffer[pc+1])
+	case "LHLD":
+		fmt.Printf("LHLD 0x%02x%02x", buffer[pc+2], buffer[pc+1])
 		opcodes = 3
 	case "CMA":
 		fmt.Printf("CMA")
@@ -60,7 +60,7 @@ func disassebmle(buffer []byte, pc int) int {
 		fmt.Printf("JNZ %02x%02x", buffer[pc+2], buffer[pc+1])
 		opcodes = 3
 	case "JMP":
-		fmt.Printf("JMP %02x%02x", buffer[pc+2], buffer[pc+1])
+		fmt.Printf("JMP %s %02x%02x", opcode.Condition, buffer[pc+2], buffer[pc+1])
 		opcodes = 3
 	case "CNZ":
 		fmt.Printf("CNZ %02x%02x", buffer[pc+2], buffer[pc+1])
@@ -196,4 +196,8 @@ func disassebmle(buffer []byte, pc int) int {
 
 	fmt.Printf("\n")
 	return opcodes
+}
+
+func debugCpuState(cpu *cpu) {
+	fmt.Printf("flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
 }

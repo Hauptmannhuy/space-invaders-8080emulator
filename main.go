@@ -3,10 +3,11 @@ package main
 import (
 	"cpu-emulator/decoder"
 	"log"
+	"time"
 )
 
 func main() {
-	debug()
+	start()
 }
 
 func start() {
@@ -14,9 +15,10 @@ func start() {
 	cpu.romBuffer = loadHex()
 	for cpu.regs.pc < uint16(len(cpu.romBuffer)) {
 		pc := cpu.regs.pc
-		disassebmle(cpu.romBuffer, int(pc))
-		// time.Sleep(150 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 		cpu.step()
+		disassebmle(cpu.romBuffer, int(pc))
+		debugCpuState(cpu)
 	}
 }
 
@@ -27,11 +29,13 @@ func debug() {
 	pc := 0
 	for pc < len(rom) {
 		code := rom[pc]
-		currOp := decoder.GetInstruction(code)
 
+		currOp := decoder.GetInstruction(code)
 		_, ok := cpuInstructions[currOp.Instruction]
 		if !ok {
-			log.Fatalf("Instruction %s is not implemented", currOp.Instruction)
+			if currOp.Instruction != "" {
+				log.Fatalf("Instruction %s is not implemented, code 0x%02x", currOp.Instruction, code)
+			}
 		}
 		n := disassebmle(rom, int(pc))
 		pc += n

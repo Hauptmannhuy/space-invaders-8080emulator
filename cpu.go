@@ -27,7 +27,7 @@ type registers struct {
 
 // flags Z (zero), S (sign), P (parity), CY (carry), CA (auxillary  carry)
 type flags struct {
-	z, s, p, cy, ac uint8
+	s, z, ac, p, cy uint8
 }
 
 func initCPU() *cpu {
@@ -75,6 +75,7 @@ func initOpcodeSet(cpu *cpu) map[string]func() int {
 		"DAA": cpu.daa,
 		"INR": cpu.inr,
 		"INX": cpu.inx,
+		"DCX": cpu.dcx,
 		"DCR": cpu.dcr,
 
 		// logic group
@@ -107,6 +108,10 @@ func initOpcodeSet(cpu *cpu) map[string]func() int {
 		"NOP":  cpu.nop,
 
 		"RIM": cpu.rim,
+
+		//special
+
+		"SIM": cpu.sim,
 	}
 }
 
@@ -161,7 +166,7 @@ func (regs *registers) getPair(dest string) uint16 {
 		if dest == "HL" || dest == "M" || dest == "H" {
 			return make16bit(regs.h, regs.l)
 		}
-		log.Fatal("Unknown pair")
+		log.Fatalf("Unknown pair %s", dest)
 	}
 	return 0
 }
@@ -210,59 +215,35 @@ func (cpu *cpu) checkConditionFlag() bool {
 	switch cpu.currentOp.Condition {
 	case decoder.Minus:
 		{
-			if cpu.flags.s == 1 {
-				return true
-			}
-			return false
+			return cpu.flags.s == 1
 		}
 	case decoder.Positive:
 		{
-			if cpu.flags.s == 0 {
-				return true
-			}
-			return false
+			return cpu.flags.s == 0
 		}
 	case decoder.Carry:
 		{
-			if cpu.flags.cy == 1 {
-				return true
-			}
-			return false
+			return cpu.flags.cy == 1
 		}
 	case decoder.NoCarry:
 		{
-			if cpu.flags.cy == 0 {
-				return true
-			}
-			return false
+			return cpu.flags.cy == 0
 		}
 	case decoder.NotZero:
 		{
-			if cpu.flags.z == 1 {
-				return true
-			}
-			return false
+			return cpu.flags.z == 1
 		}
 	case decoder.Zero:
 		{
-			if cpu.flags.z == 0 {
-				return true
-			}
-			return false
+			return cpu.flags.z == 0
 		}
 	case decoder.ParityOdd:
 		{
-			if cpu.flags.p == 1 {
-				return true
-			}
-			return false
+			return cpu.flags.p == 1
 		}
 	case decoder.ParityEven:
 		{
-			if cpu.flags.p == 0 {
-				return true
-			}
-			return false
+			return cpu.flags.p == 0
 		}
 	default:
 		log.Fatal("Error! Unknown condition flag")
@@ -595,6 +576,7 @@ func (cpu *cpu) call() int {
 		} else {
 			cpu.regs.pc = make16bit(cpu.romBuffer[cpu.regs.pc+2], cpu.romBuffer[cpu.regs.pc+1])
 		}
+		return 0
 	}
 
 	return 3
@@ -603,6 +585,7 @@ func (cpu *cpu) call() int {
 func (cpu *cpu) jmp() int {
 	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
 		cpu.regs.pc = make16bit(cpu.readROM(2), cpu.readROM(1))
+		return 0
 	}
 
 	return 3
@@ -618,6 +601,7 @@ func (cpu *cpu) ret() int {
 
 		cpu.regs.sp += cpu.regs.sp + 2
 		cpu.regs.pc = newPC
+		return 0
 	}
 
 	return 1

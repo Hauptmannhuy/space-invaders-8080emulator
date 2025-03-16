@@ -25,6 +25,11 @@ var lxi = map[byte]string{
 	0x21: "H",
 	0x31: "SP",
 }
+
+var ldax = map[byte]string{
+	0x0a: "B",
+	0x1a: "D",
+}
 var stax = map[byte]string{
 	0x02: "B",
 	0x12: "D"}
@@ -163,7 +168,7 @@ func GetInstruction(code byte) *Opcode {
 	case 0x27:
 		instruction = "DAA"
 	case 0x2a:
-		instruction = "LHD"
+		instruction = "LHLD"
 	case 0x2f:
 		instruction = "CMA"
 	case 0x30:
@@ -210,12 +215,12 @@ func GetInstruction(code byte) *Opcode {
 		instruction = "IN"
 	case 0xdc:
 		instruction = "CC"
-	case 0x0e:
+	case 0xe0:
 		instruction = "RPO"
 	case 0xe2:
 		instruction = "JPO"
 	case 0xe3:
-		instruction = "XHTL"
+		instruction = "XTHL"
 	case 0xe4:
 		instruction = "CPO"
 	case 0xe8:
@@ -246,10 +251,6 @@ func GetInstruction(code byte) *Opcode {
 		instruction = "EI"
 	case 0xfc:
 		instruction = "CM"
-	case 0xd9:
-		instruction = "-"
-	case 0xcb:
-		instruction = "-"
 	default:
 		if code >= 0x01 && code <= 0x31 && code&0xF == 0x1 {
 			instruction = "LXI"
@@ -308,7 +309,7 @@ func GetInstruction(code byte) *Opcode {
 		Instruction: instruction,
 		Operand:     GetDestination(instruction, code),
 	}
-	if code != 0xd9 && code != 0xcb && code >= 0xc0 && code <= 0xff && (string(instruction[0]) == "J" || string(instruction[0]) == "R" || string(instruction[0]) == "C") {
+	if (code != 0xd9 && code != 0xcb) && (code >= 0xc0 && code <= 0xff) && (string(instruction[0]) == "J" || string(instruction[0]) == "R" || string(instruction[0]) == "C") {
 		setConditionOpcode(opcode)
 	}
 	return opcode
@@ -336,6 +337,7 @@ func GetDestination(instruction string, code byte) string {
 	regs := map[string]map[byte]string{
 		"LXI":  lxi,
 		"STAX": stax,
+		"LDAX": ldax,
 		"INX":  inx,
 		"INR":  inr,
 		"DCR":  dcr,
@@ -357,3 +359,5 @@ func GetDestination(instruction string, code byte) string {
 	}
 	return regs[instruction][code]
 }
+
+// change string operand assignment to uint8 constans
