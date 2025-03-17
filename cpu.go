@@ -559,24 +559,41 @@ func (cpu *cpu) immediateOperationSet() int {
 }
 
 func (cpu *cpu) call() int {
-	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
-		cpu.regs.sp = cpu.regs.sp - 2
-
-		sp := cpu.regs.sp
-		hiByte := cpu.regs.pc >> 8
-		loByte := uint8(cpu.regs.pc)
-
-		cpu.memory.write(sp-1, uint8(hiByte))
-		cpu.memory.write(sp-2, loByte)
-
-		if cpu.currentOp.Instruction == "RST" {
-			rstAddrs := map[string]uint8{"0": 0x0, "1": 0x8, "2": 0x10, "3": 0x18, "4": 0x20, "5": 0x28, "6": 0x30, "7": 0x38}
-			operand := cpu.currentOp.Operand
-			cpu.regs.pc = uint16(rstAddrs[operand])
-		} else {
-			cpu.regs.pc = make16bit(cpu.romBuffer[cpu.regs.pc+2], cpu.romBuffer[cpu.regs.pc+1])
+	if make16bit(cpu.readROM(2), cpu.readROM(1)) == decoder.BDOS {
+		if cpu.regs.c == 0x9 {
+			addr := cpu.regs.getPair("D")
+			var msg []byte
+			for {
+				char := cpu.memory.read(addr)
+				fmt.Printf("%s", string(char))
+				if string(char) == "$" {
+					break
+				}
+				msg = append(msg, char)
+				addr++
+			}
+			fmt.Printf("OUTPUT MESSAGE: %s", msg)
 		}
-		return 0
+	} else {
+		if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
+			cpu.regs.sp = cpu.regs.sp - 2
+
+			sp := cpu.regs.sp
+			hiByte := cpu.regs.pc >> 8
+			loByte := uint8(cpu.regs.pc)
+
+			cpu.memory.write(sp-1, uint8(hiByte))
+			cpu.memory.write(sp-2, loByte)
+
+			if cpu.currentOp.Instruction == "RST" {
+				rstAddrs := map[string]uint8{"0": 0x0, "1": 0x8, "2": 0x10, "3": 0x18, "4": 0x20, "5": 0x28, "6": 0x30, "7": 0x38}
+				operand := cpu.currentOp.Operand
+				cpu.regs.pc = uint16(rstAddrs[operand])
+			} else {
+				cpu.regs.pc = make16bit(cpu.romBuffer[cpu.regs.pc+2], cpu.romBuffer[cpu.regs.pc+1])
+			}
+			return 0
+		}
 	}
 
 	return 3
@@ -585,6 +602,7 @@ func (cpu *cpu) call() int {
 func (cpu *cpu) jmp() int {
 	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
 		cpu.regs.pc = make16bit(cpu.readROM(2), cpu.readROM(1))
+
 		return 0
 	}
 

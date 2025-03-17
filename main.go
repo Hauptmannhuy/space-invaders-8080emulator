@@ -3,7 +3,6 @@ package main
 import (
 	"cpu-emulator/decoder"
 	"log"
-	"time"
 )
 
 func main() {
@@ -13,9 +12,10 @@ func main() {
 func start() {
 	cpu := initCPU()
 	cpu.romBuffer = loadHex()
+	cpu.regs.pc = 0x100
 	for cpu.regs.pc < uint16(len(cpu.romBuffer)) {
 		pc := cpu.regs.pc
-		time.Sleep(150 * time.Millisecond)
+		// time.Sleep(200 * time.Millisecond)
 		cpu.step()
 		disassebmle(cpu.romBuffer, int(pc))
 		debugCpuState(cpu)

@@ -19,6 +19,8 @@ const (
 	Minus      = "M"
 )
 
+const BDOS = 0x05
+
 var lxi = map[byte]string{
 	0x01: "B",
 	0x11: "D",

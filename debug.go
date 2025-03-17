@@ -7,7 +7,7 @@ import (
 )
 
 func loadHex() []byte {
-	buff, _ := os.ReadFile("space-invaders.rom")
+	buff, _ := os.ReadFile("cpudiagFixed.bin")
 	return buff
 }
 
@@ -199,5 +199,13 @@ func disassebmle(buffer []byte, pc int) int {
 }
 
 func debugCpuState(cpu *cpu) {
-	fmt.Printf("flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
+	fmt.Printf(" A:  0x%02x\n BC: 0x%02x\n DE: 0x%02x\n HL: 0x%02x\n", cpu.regs.a, cpu.regs.getPair("B"), cpu.regs.getPair("D"), cpu.regs.getPair("HL"))
+	fmt.Printf(" SP: 0x%02x\n PC: 0x%02x \n", cpu.regs.sp, cpu.regs.pc)
+	fmt.Printf(" flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
+	fmt.Println("=========================================================================")
+
+}
+
+func (cpu *cpu) messageOutput() {
+
 }
