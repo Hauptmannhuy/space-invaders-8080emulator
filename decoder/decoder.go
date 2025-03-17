@@ -266,7 +266,7 @@ func GetInstruction(code byte) *Opcode {
 			instruction = "MVI"
 		} else if code >= 0x09 && code <= 0x39 && code&0xf == 0x9 {
 			instruction = "DAD"
-		} else if code >= 0x0a && 0x1a <= code && code&0xf == 0xa {
+		} else if code >= 0x0a && code <= 0x1a && code&0xf == 0xa {
 			instruction = "LDAX"
 		} else if code >= 0x0b && code <= 0x3b && code&0xf == 0xb {
 			instruction = "DCX"
