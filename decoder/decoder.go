@@ -3,7 +3,7 @@ package decoder
 type Opcode struct {
 	Code        byte
 	Instruction string
-	Operand     string
+	Register    string
 	Condition   string
 }
 
@@ -309,7 +309,7 @@ func GetInstruction(code byte) *Opcode {
 	opcode := &Opcode{
 		Code:        code,
 		Instruction: instruction,
-		Operand:     GetDestination(instruction, code),
+		Register:    GetDestination(instruction, code),
 	}
 	if (code != 0xd9 && code != 0xcb) && (code >= 0xc0 && code <= 0xff) && (string(instruction[0]) == "J" || string(instruction[0]) == "R" || string(instruction[0]) == "C") {
 		setConditionOpcode(opcode)

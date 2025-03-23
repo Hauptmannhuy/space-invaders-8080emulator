@@ -6,23 +6,20 @@ import (
 	"log"
 	"math/bits"
 	"os"
-	"time"
 )
 
 type cpu struct {
 	memory           *memory
 	regs             *registers
 	flags            *flags
-	instructionSet   map[string]func() int
-	romBuffer        []byte
-	currentOp        *decoder.Opcode
+	sp               uint16 // stack pointer
+	pc               uint16 //  program counter
 	interruptEnabled bool
+	currentOp        *decoder.Opcode
 }
 
 type registers struct {
 	b, c, d, e, l, h, a uint8
-	sp                  uint16 // stack pointer
-	pc                  uint16 //  program counter
 }
 
 // flags Z (zero), S (sign), P (parity), CY (carry), CA (auxillary  carry)
@@ -30,183 +27,236 @@ type flags struct {
 	s, z, ac, p, cy uint8
 }
 
-func initCPU() *cpu {
+func initCPU(romPath ...string) *cpu {
+	var memory *memory
+	if romPath == nil {
+		memory = loadRom()
+	}
 	cpu := &cpu{
-		memory: &memory{},
+		memory: memory,
 		regs:   &registers{},
 		flags:  &flags{},
 	}
-	cpu.instructionSet = initOpcodeSet(cpu)
 	return cpu
 }
 
-func initOpcodeSet(cpu *cpu) map[string]func() int {
-	return map[string]func() int{
+func (cpu *cpu) executeInstruction() uint8 {
 
-		// data transfer group
-		"MOV":  cpu.mov,
-		"LXI":  cpu.lxi,
-		"MVI":  cpu.mvi,
-		"LDA":  cpu.lda,
-		"STA":  cpu.sta,
-		"LHLD": cpu.lhld,
-		"SHLD": cpu.shld,
-		"STAX": cpu.stax,
-		"LDAX": cpu.ldax,
-		"XCHG": cpu.xchg,
+	switch cpu.currentOp.Instruction {
+	// data transfer group
+	case "MOV":
+		return cpu.mov()
+	case "LXI":
+		return cpu.lxi()
+	case "MVI":
+		return cpu.mvi()
+	case "LDA":
+		return cpu.lda()
+	case "STA":
+		return cpu.sta()
+	case "LHLD":
+		return cpu.lhld()
+	case "SHLD":
+		return cpu.shld()
+	case "STAX":
+		return cpu.stax()
+	case "LDAX":
+		return cpu.ldax()
+	case "XCHG":
+		return cpu.xchg()
 
-		// arithmetic group
-		"ADD": cpu.srcRegOperationSet,
-		"ADI": cpu.srcRegOperationSet,
-		"ADC": cpu.srcRegOperationSet,
-		"SUB": cpu.srcRegOperationSet,
-		"SBB": cpu.srcRegOperationSet,
-		"SUI": cpu.immediateOperationSet,
-		"SBI": cpu.immediateOperationSet,
-		"ACI": cpu.immediateOperationSet,
-		"DAD": cpu.dad,
-		"RAL": cpu.ral,
-		"RAR": cpu.rar,
-		"RLC": cpu.rlc,
-		"RRC": cpu.rrc,
-		"CMA": cpu.cma,
-		"STC": cpu.stc,
-		"CMC": cpu.cmc,
-		"DAA": cpu.daa,
-		"INR": cpu.inr,
-		"INX": cpu.inx,
-		"DCX": cpu.dcx,
-		"DCR": cpu.dcr,
+	// arithmetic group
+	case "ADD":
+		return cpu.add()
+	case "ADI":
+		return cpu.add()
+	case "ADC":
+		return cpu.add()
+	case "SUB":
+		return cpu.sub()
+	case "SBB":
+		return cpu.sub()
+	case "SUI":
+		return cpu.sub()
+	case "SBI":
+		return cpu.sub()
+	case "ACI":
+		return cpu.add()
+	case "DAD":
+		return cpu.dad()
+	case "RAL":
+		return cpu.ral()
+	case "RAR":
+		return cpu.rar()
+	case "RLC":
+		return cpu.rlc()
+	case "RRC":
+		return cpu.rrc()
+	case "CMA":
+		return cpu.cma()
+	case "STC":
+		return cpu.stc()
+	case "CMC":
+		return cpu.cmc()
+	case "DAA":
+		return cpu.daa()
+	case "INR":
+		return cpu.inr()
+	case "INX":
+		return cpu.inx()
+	case "DCX":
+		return cpu.dcx()
+	case "DCR":
+		return cpu.dcr()
 
-		// logic group
-		"ANA": cpu.srcRegOperationSet,
-		"ANI": cpu.immediateOperationSet,
-		"XRA": cpu.srcRegOperationSet,
-		"XRI": cpu.immediateOperationSet,
-		"ORA": cpu.srcRegOperationSet,
-		"ORI": cpu.immediateOperationSet,
-		"CMP": cpu.srcRegOperationSet,
-		"CPI": cpu.immediateOperationSet,
+	// logic group
+	case "ANA":
+		return cpu.ana()
+	case "ANI":
+		return cpu.ana()
+	case "XRA":
+		return cpu.xra()
+	case "XRI":
+		return cpu.xra()
+	case "ORA":
+		return cpu.ora()
+	case "ORI":
+		return cpu.ora()
+	case "CMP":
+		return cpu.cmp()
+	case "CPI":
+		return cpu.cmp()
 
-		// branch group
-		"JMP":  cpu.jmp,
-		"PCHL": cpu.pchl,
-		"CALL": cpu.call,
-		"RET":  cpu.ret,
-		"RST":  cpu.rst,
+	// branch group
+	case "JMP":
+		return cpu.jmp()
+	case "PCHL":
+		return cpu.pchl()
+	case "CALL":
+		return cpu.call()
+	case "RET":
+		return cpu.ret()
+	case "RST":
+		return cpu.rst()
 
-		// stack, i/o, machine control group
-		"PUSH": cpu.push,
-		"POP":  cpu.pop,
-		"XTHL": cpu.xthl,
-		"SPHL": cpu.sphl,
-		"OUT":  cpu.out,
-		"IN":   cpu.in,
-		"DI":   cpu.di,
-		"EI":   cpu.ei,
-		"HLT":  cpu.hlt,
-		"NOP":  cpu.nop,
+	// stack i/o machine control group
+	case "PUSH":
+		return cpu.push()
+	case "POP":
+		return cpu.pop()
+	case "XTHL":
+		return cpu.xthl()
+	case "SPHL":
+		return cpu.sphl()
+	case "OUT":
+		return cpu.out()
+	case "IN":
+		return cpu.in()
+	case "DI":
+		return cpu.di()
+	case "EI":
+		return cpu.ei()
+	case "HLT":
+		return cpu.hlt()
+	case "NOP":
+		return cpu.nop()
 
-		"RIM": cpu.rim,
+	case "RIM":
+		return cpu.rim()
 
-		//special
+	//special
 
-		"SIM": cpu.sim,
+	case "SIM":
+		return cpu.sim()
+	default:
+		if cpu.currentOp.Instruction == "" {
+			return 1
+		} else {
+			panic(fmt.Sprintf("Instruction %s is not found, pc: x%02x", cpu.currentOp.Instruction, cpu.pc))
+		}
 	}
 }
 
 func (cpu *cpu) step() {
-	cpu.currentOp = getOpcode(cpu.romBuffer[cpu.regs.pc])
-	opFn := cpu.fetchInstruction()
-
-	n := opFn()
-	cpu.regs.pc += uint16(n)
-}
-
-func (cpu *cpu) fetchInstruction() func() int {
-	if fn, ok := cpu.instructionSet[cpu.currentOp.Instruction]; ok {
-		return fn
-	} else {
-		return func() int {
-			fmt.Println("Unknown instruction!!!! Increase pc on 1")
-			time.Sleep(150 * time.Millisecond)
-			return 1
-		}
-	}
-
+	cpu.currentOp = getOpcode(cpu.memory[cpu.pc])
+	n := cpu.executeInstruction()
+	cpu.pc += uint16(n)
 }
 
 func getOpcode(code byte) *decoder.Opcode {
 	return decoder.GetInstruction(code)
 }
 
-func (regs *registers) writePairRegs(reg string, b1, b2 uint8) {
+func (cpu *cpu) updatePairRegs(reg string, b1, b2 uint8) {
 	switch reg {
 	case "B":
-		regs.b = b1
-		regs.c = b2
+		cpu.regs.b = b1
+		cpu.regs.c = b2
 	case "D":
-		regs.d = b1
-		regs.e = b2
+		cpu.regs.d = b1
+		cpu.regs.e = b2
 	case "H":
-		regs.h = b1
-		regs.l = b2
+		cpu.regs.h = b1
+		cpu.regs.l = b2
 	case "SP":
-		regs.sp = make16bit(b1, b2)
+		cpu.sp = make16bit(b1, b2)
 	}
 }
 
-func (regs *registers) getPair(dest string) uint16 {
+func (cpu *cpu) getPair(dest string) uint16 {
 	switch dest {
 	case "B":
-		return make16bit(regs.b, regs.c)
+		return make16bit(cpu.regs.b, cpu.regs.c)
 	case "D":
-		return make16bit(regs.d, regs.e)
+		return make16bit(cpu.regs.d, cpu.regs.e)
 	default:
 		if dest == "HL" || dest == "M" || dest == "H" {
-			return make16bit(regs.h, regs.l)
+			return make16bit(cpu.regs.h, cpu.regs.l)
 		}
 		log.Fatalf("Unknown pair %s", dest)
 	}
 	return 0
 }
 
-func (regs *registers) getReg(reg string) uint8 {
+func (cpu *cpu) getReg(reg string) uint8 {
 	switch reg {
 	case "B":
-		return regs.b
+		return cpu.regs.b
 	case "C":
-		return regs.c
+		return cpu.regs.c
 	case "D":
-		return regs.d
+		return cpu.regs.d
 	case "E":
-		return regs.e
+		return cpu.regs.e
 	case "H":
-		return regs.h
+		return cpu.regs.h
 	case "L":
-		return regs.l
+		return cpu.regs.l
 	case "A":
-		return regs.a
+		return cpu.regs.a
+	case "M":
+		addr := cpu.getPair(reg)
+		return cpu.memory.read(addr)
 	}
 	return 0
 }
 
-func (regs *registers) updateReg(reg string, val uint8) {
+func (cpu *cpu) updateReg(reg string, val uint8) {
 	switch reg {
 	case "B":
-		regs.b = val
+		cpu.regs.b = val
 	case "C":
-		regs.c = val
+		cpu.regs.c = val
 	case "D":
-		regs.d = val
+		cpu.regs.d = val
 	case "E":
-		regs.e = val
+		cpu.regs.e = val
 	case "H":
-		regs.h = val
+		cpu.regs.h = val
 	case "L":
-		regs.l = val
+		cpu.regs.l = val
 	case "A":
-		regs.a = val
+		cpu.regs.a = val
 	}
 }
 
@@ -231,19 +281,19 @@ func (cpu *cpu) checkConditionFlag() bool {
 		}
 	case decoder.NotZero:
 		{
-			return cpu.flags.z == 1
+			return cpu.flags.z == 0
 		}
 	case decoder.Zero:
 		{
-			return cpu.flags.z == 0
+			return cpu.flags.z == 1
 		}
 	case decoder.ParityOdd:
 		{
-			return cpu.flags.p == 1
+			return cpu.flags.p == 0
 		}
 	case decoder.ParityEven:
 		{
-			return cpu.flags.p == 0
+			return cpu.flags.p == 1
 		}
 	default:
 		log.Fatal("Error! Unknown condition flag")
@@ -251,97 +301,92 @@ func (cpu *cpu) checkConditionFlag() bool {
 	}
 }
 
-func (cpu *cpu) readROM(n int) byte {
-	pc := cpu.regs.pc
-	return cpu.romBuffer[pc+uint16(n)]
-}
-
-func (cpu *cpu) nop() int {
+func (cpu *cpu) nop() uint8 {
 	return 1
 }
 
-func (cpu *cpu) lxi() int {
-	b1 := cpu.readROM(2)
-	b2 := cpu.readROM(1)
-	cpu.regs.writePairRegs(cpu.currentOp.Operand, b1, b2)
+func (cpu *cpu) lxi() uint8 {
+	b1 := cpu.memory.read(cpu.pc + 2)
+	b2 := cpu.memory.read(cpu.pc + 1)
+	cpu.updatePairRegs(cpu.currentOp.Register, b1, b2)
 	return 3
 }
 
-func (cpu *cpu) stax() int {
-	reg := cpu.currentOp.Operand
-	addr := cpu.regs.getPair(reg)
+func (cpu *cpu) stax() uint8 {
+	reg := cpu.currentOp.Register
+	addr := cpu.getPair(reg)
 	accumVal := cpu.regs.a
 	cpu.memory.write(addr, accumVal)
 	return 1
 }
 
-func (cpu *cpu) inx() int {
-	reg := cpu.currentOp.Operand
-	bits := cpu.regs.getPair(reg) + 1
+func (cpu *cpu) inx() uint8 {
+	reg := cpu.currentOp.Register
+	bits := cpu.getPair(reg) + 1
 	b1 := uint8(bits >> 8)
 	b2 := uint8(bits & 0xff)
-	cpu.regs.writePairRegs(reg, b1, b2)
+	cpu.updatePairRegs(reg, b1, b2)
 	return 1
 }
 
-func (cpu *cpu) inr() int {
-	reg := cpu.currentOp.Operand
+func (cpu *cpu) inr() uint8 {
+	reg := cpu.currentOp.Register
 	var val uint8
 	if reg == "M" {
-		addr := cpu.regs.getPair(reg)
+		addr := cpu.getPair(reg)
 		val = cpu.memory.read(addr)
 		val += 1
 		cpu.memory.write(addr, val)
 	} else {
-		val = cpu.regs.getReg(reg) + 1
-		cpu.regs.updateReg(reg, val)
+		val = cpu.getReg(reg) + 1
+		cpu.updateReg(reg, val)
 	}
-	cpu.flags.updateZSPAC(val)
+	cpu.updateFlags(val)
 	return 1
 }
 
-func (cpu *cpu) dcr() int {
-	reg := cpu.currentOp.Operand
+func (cpu *cpu) dcr() uint8 {
+	reg := cpu.currentOp.Register
 	var val uint8
 	if reg == "M" {
-		addr := cpu.regs.getPair(reg)
+		addr := cpu.getPair(reg)
 		val = cpu.memory.read(addr)
 		val -= 1
 		cpu.memory.write(addr, val)
 	} else {
-		val = cpu.regs.getReg(reg) - 1
-		cpu.regs.updateReg(reg, val)
+		val = cpu.getReg(reg) - 1
+		cpu.updateReg(reg, val)
 	}
-	cpu.flags.updateZSPAC(val)
+	cpu.updateFlags(val)
 	return 1
 }
 
-func (cpu *cpu) mvi() int {
-	byte2 := cpu.romBuffer[cpu.regs.pc+1]
-	if cpu.currentOp.Operand == "M" {
-		addr := cpu.regs.getPair(cpu.currentOp.Operand)
+func (cpu *cpu) mvi() uint8 {
+	byte2 := cpu.memory[cpu.pc+1]
+	if cpu.currentOp.Register == "M" {
+		addr := cpu.getPair(cpu.currentOp.Register)
 		cpu.memory.write(addr, byte2)
 	} else {
-		cpu.regs.updateReg(cpu.currentOp.Operand, byte2)
+		cpu.updateReg(cpu.currentOp.Register, byte2)
 	}
 	return 2
 }
 
-func (cpu *cpu) rlc() int {
+func (cpu *cpu) rlc() uint8 {
 	reg := "A"
-	regVal := cpu.regs.getReg(reg)
+	regVal := cpu.getReg(reg)
 	prev7Bit := regVal & 0xf
 	regVal = regVal << 1
 	regVal = regVal | prev7Bit
-	cpu.regs.updateReg(reg, regVal)
+	cpu.updateReg(reg, regVal)
 	cpu.flags.cy = prev7Bit
 	return 1
 }
 
-func (cpu *cpu) dad() int {
-	destReg := cpu.currentOp.Operand
-	hl := cpu.regs.getPair("HL")
-	value := cpu.regs.getPair(destReg)
+func (cpu *cpu) dad() uint8 {
+	destReg := cpu.currentOp.Register
+	hl := cpu.getPair("HL")
+	value := cpu.getPair(destReg)
 	sum := hl + value
 	if sum < 0xfff {
 		cpu.flags.cy = 1
@@ -351,42 +396,42 @@ func (cpu *cpu) dad() int {
 	return 1
 }
 
-func (cpu *cpu) ldax() int {
-	reg := cpu.currentOp.Operand
-	pairVal := cpu.regs.getPair(reg)
+func (cpu *cpu) ldax() uint8 {
+	reg := cpu.currentOp.Register
+	pairVal := cpu.getPair(reg)
 	memVal := cpu.memory.read(pairVal)
-	cpu.regs.updateReg(reg, memVal)
+	cpu.updateReg(reg, memVal)
 	return 1
 }
 
-func (cpu *cpu) dcx() int {
-	pairVal := cpu.regs.getPair(cpu.currentOp.Operand) - 1
-	cpu.regs.writePairRegs(cpu.currentOp.Operand, uint8(pairVal>>8), uint8(pairVal&0xff))
+func (cpu *cpu) dcx() uint8 {
+	pairVal := cpu.getPair(cpu.currentOp.Register) - 1
+	cpu.updatePairRegs(cpu.currentOp.Register, uint8(pairVal>>8), uint8(pairVal&0xff))
 	return 1
 }
 
-func (cpu *cpu) rrc() int {
-	regVal := cpu.regs.getReg(cpu.currentOp.Operand)
+func (cpu *cpu) rrc() uint8 {
+	regVal := cpu.getReg(cpu.currentOp.Register)
 	shifted := regVal >> 1
 	prev0Bit := regVal & 1
 	shifted = (shifted & 0x7f) | (prev0Bit << 7)
-	cpu.regs.updateReg(cpu.currentOp.Operand, shifted)
+	cpu.updateReg(cpu.currentOp.Register, shifted)
 	cpu.flags.cy = prev0Bit
 	return 1
 }
 
 // A = A << 1; bit 0 = prev CY; CY = prev bit 7
-func (cpu *cpu) ral() int {
-	regVal := cpu.regs.getReg(cpu.currentOp.Operand)
+func (cpu *cpu) ral() uint8 {
+	regVal := cpu.getReg(cpu.currentOp.Register)
 	newVal := regVal << 1
 	newVal = newVal | cpu.flags.cy
 	cpu.flags.cy = regVal >> 7 & 1
-	cpu.regs.updateReg(cpu.currentOp.Operand, newVal)
+	cpu.updateReg(cpu.currentOp.Register, newVal)
 	return 1
 }
 
 // A = A >> 1; bit 7 = prev bit 7; CY = prev bit 0
-func (cpu *cpu) rar() int {
+func (cpu *cpu) rar() uint8 {
 	regVal := cpu.regs.a
 	prevBit7 := regVal & (1 << 7)
 	newVal := (prevBit7 | regVal>>1)
@@ -396,19 +441,19 @@ func (cpu *cpu) rar() int {
 }
 
 // some I/O thing
-func (cpu *cpu) rim() int {
+func (cpu *cpu) rim() uint8 {
 	return 1
 }
 
-func (cpu *cpu) shld() int {
-	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+func (cpu *cpu) shld() uint8 {
+	addr := make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1))
 	cpu.memory.write(addr, cpu.regs.l)
 	cpu.memory.write(addr+1, cpu.regs.h)
 	return 3
 }
 
-func (cpu *cpu) lhld() int {
-	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+func (cpu *cpu) lhld() uint8 {
+	addr := make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1))
 	l := cpu.memory.read(addr)
 	h := cpu.memory.read(addr + 1)
 	cpu.regs.l = l
@@ -416,152 +461,217 @@ func (cpu *cpu) lhld() int {
 	return 3
 }
 
-func (cpu *cpu) cma() int {
+func (cpu *cpu) cma() uint8 {
 	cpu.regs.a = ^cpu.regs.a
 	return 1
 }
 
 // some useless command
-func (cpu *cpu) daa() int {
+func (cpu *cpu) daa() uint8 {
 	return 1
 }
 
 // special
-func (cpu *cpu) sim() int {
+func (cpu *cpu) sim() uint8 {
 	return 1
 }
 
-func (cpu *cpu) sta() int {
-	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+func (cpu *cpu) sta() uint8 {
+	addr := make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1))
 	cpu.memory.write(addr, cpu.regs.a)
 	return 3
 }
 
-func (cpu *cpu) stc() int {
+func (cpu *cpu) stc() uint8 {
 	cpu.flags.cy = 1
 	return 1
 }
 
-func (cpu *cpu) lda() int {
-	addr := make16bit(cpu.readROM(2), cpu.readROM(1))
+func (cpu *cpu) lda() uint8 {
+	addr := make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1))
 	cpu.regs.a = cpu.memory.read(addr)
 	return 3
 }
 
-func (cpu *cpu) cmc() int {
+func (cpu *cpu) cmc() uint8 {
 	cpu.flags.cy = ^cpu.flags.cy
 	return 1
 }
 
-func (cpu *cpu) mov() int {
-	destReg := string(cpu.currentOp.Operand[0])
-	sourceReg := string(cpu.currentOp.Operand[len(cpu.currentOp.Operand)-1])
+func (cpu *cpu) mov() uint8 {
+	destReg := string(cpu.currentOp.Register[0])
+	sourceReg := string(cpu.currentOp.Register[len(cpu.currentOp.Register)-1])
 	if destReg == "M" {
-		addr := cpu.regs.getPair(destReg)
-		cpu.memory.write(addr, cpu.regs.getReg(sourceReg))
+		addr := cpu.getPair(destReg)
+		cpu.memory.write(addr, cpu.getReg(sourceReg))
 		return 1
 	} else if sourceReg == "M" {
-		addr := cpu.regs.getPair(sourceReg)
+		addr := cpu.getPair(sourceReg)
 		memVal := cpu.memory.read(addr)
-		cpu.regs.updateReg(destReg, memVal)
+		cpu.updateReg(destReg, memVal)
 		return 1
 	}
 
-	cpu.regs.updateReg(destReg, cpu.regs.getReg(sourceReg))
+	cpu.updateReg(destReg, cpu.getReg(sourceReg))
 	return 1
 }
 
 // halt
-func (cpu *cpu) hlt() int {
+func (cpu *cpu) hlt() uint8 {
 	os.Exit(0)
 	return 0
 }
 
-func (flags *flags) updateCY(prev, new uint8) {
+func (cpu *cpu) cmp() uint8 {
+	var operand uint8
+	var res uint8
 
-	if prev > new {
-		flags.cy = 1
+	if cpu.currentOp.Register == "CPI" {
+		operand = cpu.memory.read(cpu.pc + 1)
 	} else {
-		flags.cy = 0
-	}
-}
-
-func (cpu *cpu) srcRegOperationSet() int {
-	var OperandSelector uint8
-	var newAccum uint8
-	accumulator := cpu.regs.a
-
-	if cpu.currentOp.Operand == "M" {
-		OperandSelector = cpu.memory.read(cpu.regs.getPair("M"))
-	} else {
-		OperandSelector = cpu.regs.getReg(cpu.currentOp.Operand)
+		operand = cpu.getReg(cpu.currentOp.Register)
 	}
 
-	switch cpu.currentOp.Instruction {
-	case "ADD":
-		newAccum = accumulator + OperandSelector
-	case "ADC":
-		newAccum = accumulator + OperandSelector + cpu.flags.cy
-	case "SUB":
-		newAccum = accumulator - OperandSelector
-	case "SBB":
-		newAccum = accumulator - OperandSelector - cpu.flags.cy
-	case "ANA":
-		newAccum = accumulator & OperandSelector
-	case "XRA":
-		newAccum = accumulator ^ OperandSelector
-	case "ORA":
-		newAccum = accumulator | OperandSelector
-	case "CMP":
-		newAccum = OperandSelector
-	}
+	res = cpu.regs.a - operand
 
-	cpu.flags.updateZSPAC(newAccum)
-	cpu.flags.updateCY(accumulator, newAccum)
+	cpu.updateFlags(res, 0)
 
-	if cpu.currentOp.Instruction != "CMP" {
-		cpu.regs.a = newAccum
+	if cpu.currentOp.Register == "CPI" {
+		return 2
 	}
 
 	return 1
 }
 
-func (cpu *cpu) immediateOperationSet() int {
-	var newAccum uint8
-	prevAccum := cpu.regs.a
+func (cpu *cpu) xra() uint8 {
+	var res uint8
+	var operand uint8
 
-	switch cpu.currentOp.Instruction {
-	case "ADI":
-		newAccum = prevAccum + cpu.readROM(1)
-	case "ACI":
-		newAccum = prevAccum + cpu.flags.cy + cpu.readROM(1)
-	case "SUI":
-		newAccum = prevAccum - cpu.readROM(1)
-	case "SBI":
-		newAccum = prevAccum - cpu.readROM(1)
-	case "ANI":
-		newAccum = prevAccum & cpu.readROM(1)
-	case "XRI":
-		newAccum = prevAccum ^ cpu.readROM(1)
-	case "ORI":
-		newAccum = prevAccum | cpu.readROM(1)
-	case "CPI":
-		newAccum = cpu.readROM(1)
+	if cpu.currentOp.Instruction == "XRI" {
+		operand = cpu.memory.read(cpu.pc + 1)
+	} else {
+		operand = cpu.getReg(cpu.currentOp.Register)
 	}
 
-	cpu.flags.updateZSPAC(newAccum)
-	cpu.flags.updateCY(prevAccum, newAccum)
+	res = cpu.regs.a ^ operand
+	cpu.regs.a = res
 
-	if cpu.currentOp.Instruction != "CPI" {
-		cpu.regs.a = newAccum
+	cpu.updateFlags(res, 0)
+
+	if cpu.currentOp.Instruction == "XRI" {
+		return 2
 	}
-	return 2
+
+	return 1
 }
 
-func (cpu *cpu) call() int {
-	if make16bit(cpu.readROM(2), cpu.readROM(1)) == decoder.BDOS {
+func (cpu *cpu) ana() uint8 {
+	var operand uint8
+	var res uint8
+	prevAccum := cpu.regs.a
+
+	if cpu.currentOp.Instruction == "ANI" {
+		operand = cpu.memory.read(cpu.pc + 1)
+	} else {
+		operand = cpu.getReg(cpu.currentOp.Register)
+	}
+
+	res = prevAccum & operand
+	cpu.regs.a = res
+	cpu.updateFlags(res, 0)
+
+	if cpu.currentOp.Instruction == "ANI" {
+		return 2
+	}
+
+	return 1
+}
+
+func (cpu *cpu) add() uint8 {
+	var res uint8
+	var operand uint8
+	var carry uint8
+	prevAccum := cpu.regs.a
+
+	if cpu.currentOp.Instruction == "ADI" || cpu.currentOp.Instruction == "ACI" {
+		operand = cpu.memory.read(cpu.pc + 1)
+	} else {
+		operand = cpu.getReg(cpu.currentOp.Register)
+	}
+
+	switch cpu.currentOp.Instruction {
+	case "ADD":
+		carry, res = overflowingAdd(prevAccum, operand, 0)
+	case "ADC":
+		carry, res = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+	case "ADI":
+		carry, res = overflowingAdd(prevAccum, operand, 0)
+	case "ACI":
+		carry, res = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+	}
+
+	cpu.updateFlags(res, carry)
+
+	return 1
+}
+
+func (cpu *cpu) sub() uint8 {
+	var res uint8
+	var carry uint8
+	var operand uint8
+	prevAccum := cpu.regs.a
+
+	if cpu.currentOp.Instruction == "SUI" || cpu.currentOp.Instruction == "SBI" {
+		operand = cpu.memory.read(cpu.pc + 1)
+	} else {
+		operand = cpu.getReg(cpu.currentOp.Register)
+	}
+
+	switch cpu.currentOp.Instruction {
+	case "SUB":
+		carry, res = overflowingSub(prevAccum, operand, 0)
+	case "SBB":
+		carry, res = overflowingSub(prevAccum, operand, cpu.flags.cy)
+	case "SUI":
+		carry, res = overflowingSub(prevAccum, operand, 0)
+	case "SBI":
+		carry, res = overflowingSub(prevAccum, operand, cpu.flags.cy)
+	}
+
+	cpu.updateFlags(res, carry)
+
+	if cpu.currentOp.Instruction == "SUI" || cpu.currentOp.Instruction == "SBI" {
+		return 2
+	}
+
+	return 1
+}
+
+func (cpu *cpu) ora() uint8 {
+	var res uint8
+	var operand uint8
+
+	if cpu.currentOp.Instruction == "ORI" {
+		operand = cpu.memory.read(cpu.pc + 1)
+	} else {
+		operand = cpu.getReg(cpu.currentOp.Register)
+	}
+
+	res = cpu.regs.a | operand
+
+	cpu.updateFlags(res, 0)
+
+	if cpu.currentOp.Instruction == "ORI" {
+		return 2
+	}
+
+	return 1
+}
+
+func (cpu *cpu) call() uint8 {
+	if make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1)) == decoder.BDOS {
 		if cpu.regs.c == 0x9 {
-			addr := cpu.regs.getPair("D")
+			addr := cpu.getPair("D")
 			var msg []byte
 			for {
 				char := cpu.memory.read(addr)
@@ -576,21 +686,21 @@ func (cpu *cpu) call() int {
 		}
 	} else {
 		if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
-			cpu.regs.sp = cpu.regs.sp - 2
+			cpu.sp = cpu.sp - 2
 
-			sp := cpu.regs.sp
-			hiByte := cpu.regs.pc >> 8
-			loByte := uint8(cpu.regs.pc)
+			sp := cpu.sp
+			hiByte := cpu.pc >> 8
+			loByte := uint8(cpu.pc)
 
 			cpu.memory.write(sp-1, uint8(hiByte))
 			cpu.memory.write(sp-2, loByte)
 
 			if cpu.currentOp.Instruction == "RST" {
 				rstAddrs := map[string]uint8{"0": 0x0, "1": 0x8, "2": 0x10, "3": 0x18, "4": 0x20, "5": 0x28, "6": 0x30, "7": 0x38}
-				operand := cpu.currentOp.Operand
-				cpu.regs.pc = uint16(rstAddrs[operand])
+				operand := cpu.currentOp.Register
+				cpu.pc = uint16(rstAddrs[operand])
 			} else {
-				cpu.regs.pc = make16bit(cpu.romBuffer[cpu.regs.pc+2], cpu.romBuffer[cpu.regs.pc+1])
+				cpu.pc = make16bit(cpu.memory[cpu.pc+2], cpu.memory[cpu.pc+1])
 			}
 			return 0
 		}
@@ -599,9 +709,9 @@ func (cpu *cpu) call() int {
 	return 3
 }
 
-func (cpu *cpu) jmp() int {
+func (cpu *cpu) jmp() uint8 {
 	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
-		cpu.regs.pc = make16bit(cpu.readROM(2), cpu.readROM(1))
+		cpu.pc = make16bit(cpu.memory.read(cpu.pc+2), cpu.memory.read(cpu.pc+1))
 
 		return 0
 	}
@@ -609,25 +719,25 @@ func (cpu *cpu) jmp() int {
 	return 3
 }
 
-func (cpu *cpu) ret() int {
+func (cpu *cpu) ret() uint8 {
 	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
 		var newPC uint16
 
-		lowByte := cpu.memory.read(cpu.regs.sp)
-		highByte := cpu.memory.read(cpu.regs.sp + 1)
+		lowByte := cpu.memory.read(cpu.sp)
+		highByte := cpu.memory.read(cpu.sp + 1)
 		newPC = (uint16(highByte) << 8) | uint16(lowByte)
 
-		cpu.regs.sp += cpu.regs.sp + 2
-		cpu.regs.pc = newPC
+		cpu.sp += cpu.sp + 2
+		cpu.pc = newPC
 		return 0
 	}
 
 	return 1
 }
 
-func (cpu *cpu) push() int {
-	sp := cpu.regs.sp
-	switch cpu.currentOp.Operand {
+func (cpu *cpu) push() uint8 {
+	sp := cpu.sp
+	switch cpu.currentOp.Register {
 	case "B":
 		cpu.memory.write(sp-2, cpu.regs.c)
 		cpu.memory.write(sp-1, cpu.regs.b)
@@ -641,13 +751,13 @@ func (cpu *cpu) push() int {
 		cpu.memory.write(sp-2, cpu.flags.s|cpu.flags.z<<1|cpu.flags.ac<<2|cpu.flags.p<<3|cpu.flags.cy<<4)
 		cpu.memory.write(sp-1, cpu.regs.a)
 	}
-	cpu.regs.sp += 2
+	cpu.sp += 2
 	return 1
 }
 
-func (cpu *cpu) pop() int {
-	sp := cpu.regs.sp
-	switch cpu.currentOp.Operand {
+func (cpu *cpu) pop() uint8 {
+	sp := cpu.sp
+	switch cpu.currentOp.Register {
 	case "B":
 		cpu.regs.c = cpu.memory.read(sp)
 		cpu.regs.b = cpu.memory.read(sp + 1)
@@ -666,28 +776,28 @@ func (cpu *cpu) pop() int {
 		cpu.flags.s = (psw >> 7) & 0x1
 		cpu.regs.a = cpu.memory.read(sp + 1)
 	}
-	cpu.regs.sp += 2
+	cpu.sp += 2
 	return 1
 }
 
-func (cpu *cpu) sphl() int {
-	cpu.regs.sp = cpu.regs.getPair("HL")
+func (cpu *cpu) sphl() uint8 {
+	cpu.sp = cpu.getPair("HL")
 	return 1
 }
 
-func (cpu *cpu) xthl() int {
+func (cpu *cpu) xthl() uint8 {
 	lVal := cpu.regs.l
 	hVal := cpu.regs.h
-	sp1Addr := cpu.regs.sp
-	sp2Addr := cpu.regs.sp + 1
-	cpu.regs.l = cpu.memory.read(cpu.regs.sp)
-	cpu.regs.h = cpu.memory.read(cpu.regs.sp + 1)
+	sp1Addr := cpu.sp
+	sp2Addr := cpu.sp + 1
+	cpu.regs.l = cpu.memory.read(cpu.sp)
+	cpu.regs.h = cpu.memory.read(cpu.sp + 1)
 	cpu.memory.write(sp1Addr, lVal)
 	cpu.memory.write(sp2Addr, hVal)
 	return 1
 }
 
-func (cpu *cpu) xchg() int {
+func (cpu *cpu) xchg() uint8 {
 	h, d, l, e := cpu.regs.h, cpu.regs.d, cpu.regs.l, cpu.regs.e
 	cpu.regs.h = d
 	cpu.regs.d = h
@@ -696,45 +806,30 @@ func (cpu *cpu) xchg() int {
 	return 1
 }
 
-func (cpu *cpu) rst() int {
+func (cpu *cpu) rst() uint8 {
 	return cpu.call()
 }
 
-func (cpu *cpu) in() int {
+func (cpu *cpu) in() uint8 {
 	return 2
 }
 
-func (cpu *cpu) out() int {
+func (cpu *cpu) out() uint8 {
 	return 2
 }
 
-func (cpu *cpu) ei() int {
+func (cpu *cpu) ei() uint8 {
 	cpu.interruptEnabled = true
 	return 1
 }
 
-func (cpu *cpu) di() int {
+func (cpu *cpu) di() uint8 {
 	cpu.interruptEnabled = false
 	return 1
 }
 
-func (flags *flags) updateZSPAC(val uint8) {
-	if val == 0 {
-		flags.z = 1
-	} else {
-		flags.z = 0
-	}
-
-	if val >= 128 {
-		flags.s = 1
-	} else {
-		flags.s = 0
-	}
-	flags.p = parity(val)
-}
-
-func (cpu *cpu) pchl() int {
-	cpu.regs.pc = make16bit(cpu.regs.h, cpu.regs.l)
+func (cpu *cpu) pchl() uint8 {
+	cpu.pc = make16bit(cpu.regs.h, cpu.regs.l)
 	return 1
 }
 
@@ -744,5 +839,46 @@ func parity(val uint8) uint8 {
 		return 1
 	} else {
 		return 0
+	}
+}
+
+func (cpu *cpu) updateFlags(val uint8, carry ...uint8) {
+	if val == 0 {
+		cpu.flags.z = 1
+	} else {
+		cpu.flags.z = 0
+	}
+
+	if val >= 128 {
+		cpu.flags.s = 1
+	} else {
+		cpu.flags.s = 0
+	}
+
+	if carry != nil {
+		cpu.flags.cy = carry[0]
+	}
+
+	cpu.flags.p = parity(val)
+}
+
+func overflowingSub(x, y, cy uint8) (uint8, uint8) {
+	_, carry := bits.Sub(uint(x), uint(y), uint(cy))
+	return x + y, uint8(carry)
+}
+
+func overflowingAdd(x, y, cy uint8) (uint8, uint8) {
+	_, carry := bits.Add(uint(x), uint(y), uint(cy))
+	return x + y, uint8(carry)
+}
+
+func (flags *flags) updateCY(prev, new uint8) {
+	n := uint16(uint16(prev) + uint16(new))
+	fmt.Printf("%d + %d > 255\n", prev, new)
+	fmt.Printf("%d\n", n)
+	if n > 255 {
+		flags.cy = 1
+	} else {
+		flags.cy = 0
 	}
 }

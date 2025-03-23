@@ -1,44 +1,33 @@
 package main
 
 import (
-	"cpu-emulator/decoder"
-	"log"
+	"time"
 )
 
 func main() {
-	start()
+	debugLogic()
 }
 
-func start() {
+func debugLogic() {
 	cpu := initCPU()
-	cpu.romBuffer = loadHex()
-	cpu.regs.pc = 0x100
-	for cpu.regs.pc < uint16(len(cpu.romBuffer)) {
-		pc := cpu.regs.pc
+	cpu.pc = 0x100
+	for cpu.pc < uint16(MemorySize) {
+		pc := cpu.pc
 		// time.Sleep(200 * time.Millisecond)
-		cpu.step()
-		disassebmle(cpu.romBuffer, int(pc))
+		disassebmle(cpu.memory, int(pc))
 		debugCpuState(cpu)
+		nextStep()
+		cpu.step()
 	}
 }
 
-func debug() {
+func debugInstruction() {
 	cpu := initCPU()
-	cpuInstructions := initOpcodeSet(cpu)
-	rom := loadHex()
 	pc := 0
-	for pc < len(rom) {
-		code := rom[pc]
-
-		currOp := decoder.GetInstruction(code)
-		_, ok := cpuInstructions[currOp.Instruction]
-		if !ok {
-			if currOp.Instruction != "" {
-				log.Fatalf("Instruction %s is not implemented, code 0x%02x", currOp.Instruction, code)
-			}
-		}
-		n := disassebmle(rom, int(pc))
+	for pc < len(cpu.memory) {
+		cpu.executeInstruction()
+		n := disassebmle(cpu.memory, int(pc))
 		pc += n
-		// time.Sleep(150 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 	}
 }

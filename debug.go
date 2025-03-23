@@ -6,12 +6,7 @@ import (
 	"os"
 )
 
-func loadHex() []byte {
-	buff, _ := os.ReadFile("cpudiagFixed.bin")
-	return buff
-}
-
-func disassebmle(buffer []byte, pc int) int {
+func disassebmle(buffer *memory, pc int) int {
 	code := buffer[pc]
 	opcodes := 1
 	fmt.Printf("%04x ", pc)
@@ -199,11 +194,24 @@ func disassebmle(buffer []byte, pc int) int {
 }
 
 func debugCpuState(cpu *cpu) {
-	fmt.Printf(" A:  0x%02x\n BC: 0x%02x\n DE: 0x%02x\n HL: 0x%02x\n", cpu.regs.a, cpu.regs.getPair("B"), cpu.regs.getPair("D"), cpu.regs.getPair("HL"))
-	fmt.Printf(" SP: 0x%02x\n PC: 0x%02x \n", cpu.regs.sp, cpu.regs.pc)
+	fmt.Printf(" A:  0x%02x\n BC: 0x%02x\n DE: 0x%02x\n HL: 0x%02x\n", cpu.regs.a, cpu.getPair("B"), cpu.getPair("D"), cpu.getPair("HL"))
+	fmt.Printf(" SP: 0x%02x\n PC: 0x%02x \n", cpu.sp, cpu.pc)
 	fmt.Printf(" flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
 	fmt.Println("=========================================================================")
 
+}
+
+func nextStep() {
+	var s string
+	for {
+		fmt.Print()
+		fmt.Scan(&s)
+		if s == "s" {
+			return
+		} else if s == "q" {
+			os.Exit(1)
+		}
+	}
 }
 
 func (cpu *cpu) messageOutput() {
