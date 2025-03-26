@@ -27,13 +27,10 @@ type flags struct {
 	s, z, ac, p, cy uint8
 }
 
-func initCPU(romPath ...string) *cpu {
-	var memory *memory
-	if romPath == nil {
-		memory = loadRom()
-	}
+func initCPU() *cpu {
+
 	cpu := &cpu{
-		memory: memory,
+		memory: &memory{},
 		regs:   &registers{},
 		flags:  &flags{},
 	}
@@ -187,19 +184,19 @@ func getOpcode(code byte) *decoder.Opcode {
 	return decoder.GetInstruction(code)
 }
 
-func (cpu *cpu) updatePairRegs(reg string, b1, b2 uint8) {
+func (cpu *cpu) updatePairRegs(reg string, msb, lsb uint8) {
 	switch reg {
 	case "B":
-		cpu.regs.b = b1
-		cpu.regs.c = b2
+		cpu.regs.b = msb
+		cpu.regs.c = lsb
 	case "D":
-		cpu.regs.d = b1
-		cpu.regs.e = b2
+		cpu.regs.d = msb
+		cpu.regs.e = lsb
 	case "H":
-		cpu.regs.h = b1
-		cpu.regs.l = b2
+		cpu.regs.h = msb
+		cpu.regs.l = lsb
 	case "SP":
-		cpu.sp = make16bit(b1, b2)
+		cpu.sp = make16bit(msb, lsb)
 	}
 }
 
@@ -306,9 +303,9 @@ func (cpu *cpu) nop() uint8 {
 }
 
 func (cpu *cpu) lxi() uint8 {
-	b1 := cpu.memory.read(cpu.pc + 2)
-	b2 := cpu.memory.read(cpu.pc + 1)
-	cpu.updatePairRegs(cpu.currentOp.Register, b1, b2)
+	msb := cpu.memory.read(cpu.pc + 2)
+	lsb := cpu.memory.read(cpu.pc + 1)
+	cpu.updatePairRegs(cpu.currentOp.Register, msb, lsb)
 	return 3
 }
 
@@ -524,19 +521,17 @@ func (cpu *cpu) hlt() uint8 {
 
 func (cpu *cpu) cmp() uint8 {
 	var operand uint8
-	var res uint8
 
-	if cpu.currentOp.Register == "CPI" {
+	if cpu.currentOp.Instruction == "CPI" {
 		operand = cpu.memory.read(cpu.pc + 1)
 	} else {
 		operand = cpu.getReg(cpu.currentOp.Register)
 	}
 
-	res = cpu.regs.a - operand
+	res, carry := overflowingSub(cpu.regs.a, operand, 0)
+	cpu.updateFlags(res, carry)
 
-	cpu.updateFlags(res, 0)
-
-	if cpu.currentOp.Register == "CPI" {
+	if cpu.currentOp.Instruction == "CPI" {
 		return 2
 	}
 
@@ -601,16 +596,20 @@ func (cpu *cpu) add() uint8 {
 
 	switch cpu.currentOp.Instruction {
 	case "ADD":
-		carry, res = overflowingAdd(prevAccum, operand, 0)
+		res, carry = overflowingAdd(prevAccum, operand, 0)
 	case "ADC":
-		carry, res = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+		res, carry = overflowingAdd(prevAccum, operand, cpu.flags.cy)
 	case "ADI":
-		carry, res = overflowingAdd(prevAccum, operand, 0)
+		res, carry = overflowingAdd(prevAccum, operand, 0)
 	case "ACI":
-		carry, res = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+		res, carry = overflowingAdd(prevAccum, operand, cpu.flags.cy)
 	}
-
+	cpu.regs.a = res
 	cpu.updateFlags(res, carry)
+
+	if cpu.currentOp.Instruction == "ADI" || cpu.currentOp.Instruction == "ACI" {
+		return 2
+	}
 
 	return 1
 }
@@ -629,15 +628,16 @@ func (cpu *cpu) sub() uint8 {
 
 	switch cpu.currentOp.Instruction {
 	case "SUB":
-		carry, res = overflowingSub(prevAccum, operand, 0)
+		res, carry = overflowingSub(prevAccum, operand, 0)
 	case "SBB":
-		carry, res = overflowingSub(prevAccum, operand, cpu.flags.cy)
+		res, carry = overflowingSub(prevAccum, operand, cpu.flags.cy)
 	case "SUI":
-		carry, res = overflowingSub(prevAccum, operand, 0)
+		res, carry = overflowingSub(prevAccum, operand, 0)
 	case "SBI":
-		carry, res = overflowingSub(prevAccum, operand, cpu.flags.cy)
+		res, carry = overflowingSub(prevAccum, operand, cpu.flags.cy)
 	}
 
+	cpu.regs.a = res
 	cpu.updateFlags(res, carry)
 
 	if cpu.currentOp.Instruction == "SUI" || cpu.currentOp.Instruction == "SBI" {
@@ -659,6 +659,7 @@ func (cpu *cpu) ora() uint8 {
 
 	res = cpu.regs.a | operand
 
+	cpu.regs.a = res
 	cpu.updateFlags(res, 0)
 
 	if cpu.currentOp.Instruction == "ORI" {
@@ -675,37 +676,35 @@ func (cpu *cpu) call() uint8 {
 			var msg []byte
 			for {
 				char := cpu.memory.read(addr)
-				fmt.Printf("%s", string(char))
+				msg = append(msg, char)
+				addr++
 				if string(char) == "$" {
 					break
 				}
-				msg = append(msg, char)
-				addr++
 			}
-			fmt.Printf("OUTPUT MESSAGE: %s", msg)
+			fmt.Printf("OUTPUT MESSAGE: %s\n", msg)
+			os.Exit(1)
 		}
 	} else {
 		if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
+			lsb := uint8(cpu.memory[cpu.pc+1])
+			msb := uint8(cpu.memory[cpu.pc+2])
+			addr := make16bit(msb, lsb)
+
+			nextAddr := cpu.pc + 3
+			lsbNextAddr := uint8(nextAddr & 0x00FF)
+			msbNextAddr := uint8((nextAddr & 0xFF00) >> 8)
+
+			cpu.memory.write(cpu.sp-1, msbNextAddr)
+			cpu.memory.write(cpu.sp-2, lsbNextAddr)
+
 			cpu.sp = cpu.sp - 2
+			cpu.pc = addr
 
-			sp := cpu.sp
-			hiByte := cpu.pc >> 8
-			loByte := uint8(cpu.pc)
-
-			cpu.memory.write(sp-1, uint8(hiByte))
-			cpu.memory.write(sp-2, loByte)
-
-			if cpu.currentOp.Instruction == "RST" {
-				rstAddrs := map[string]uint8{"0": 0x0, "1": 0x8, "2": 0x10, "3": 0x18, "4": 0x20, "5": 0x28, "6": 0x30, "7": 0x38}
-				operand := cpu.currentOp.Register
-				cpu.pc = uint16(rstAddrs[operand])
-			} else {
-				cpu.pc = make16bit(cpu.memory[cpu.pc+2], cpu.memory[cpu.pc+1])
-			}
 			return 0
 		}
+		return 3
 	}
-
 	return 3
 }
 
@@ -721,14 +720,13 @@ func (cpu *cpu) jmp() uint8 {
 
 func (cpu *cpu) ret() uint8 {
 	if cpu.currentOp.Condition == "" || cpu.checkConditionFlag() {
-		var newPC uint16
+		var addr uint16
 
-		lowByte := cpu.memory.read(cpu.sp)
-		highByte := cpu.memory.read(cpu.sp + 1)
-		newPC = (uint16(highByte) << 8) | uint16(lowByte)
-
-		cpu.sp += cpu.sp + 2
-		cpu.pc = newPC
+		lsb := cpu.memory.read(cpu.sp)
+		msb := cpu.memory.read(cpu.sp + 1)
+		addr = uint16(uint16(lsb) | uint16(msb)<<8)
+		cpu.sp += 2
+		cpu.pc = addr
 		return 0
 	}
 
@@ -807,7 +805,13 @@ func (cpu *cpu) xchg() uint8 {
 }
 
 func (cpu *cpu) rst() uint8 {
-	return cpu.call()
+	resetAddr := cpu.currentOp.Code & 0b00111000
+	cpu.memory.write(cpu.sp-1, uint8(cpu.pc&0x0f))
+	cpu.memory.write(cpu.sp-2, uint8((cpu.pc>>8)&0x0f))
+	cpu.sp -= 2
+	cpu.pc = uint16(resetAddr - 1)
+
+	return 0
 }
 
 func (cpu *cpu) in() uint8 {
@@ -863,22 +867,17 @@ func (cpu *cpu) updateFlags(val uint8, carry ...uint8) {
 }
 
 func overflowingSub(x, y, cy uint8) (uint8, uint8) {
-	_, carry := bits.Sub(uint(x), uint(y), uint(cy))
-	return x + y, uint8(carry)
+	var carry uint8
+	if int16(x)-int16(y)-int16(cy) < 0 {
+		carry = 1
+	}
+	return x - y - cy, carry
 }
 
 func overflowingAdd(x, y, cy uint8) (uint8, uint8) {
-	_, carry := bits.Add(uint(x), uint(y), uint(cy))
-	return x + y, uint8(carry)
-}
-
-func (flags *flags) updateCY(prev, new uint8) {
-	n := uint16(uint16(prev) + uint16(new))
-	fmt.Printf("%d + %d > 255\n", prev, new)
-	fmt.Printf("%d\n", n)
-	if n > 255 {
-		flags.cy = 1
-	} else {
-		flags.cy = 0
+	var carry uint8
+	if uint16(x)+uint16(y)+uint16(cy) >= 255 {
+		carry = 1
 	}
+	return x + y + cy, carry
 }

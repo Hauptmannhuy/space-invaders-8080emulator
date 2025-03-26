@@ -3,8 +3,33 @@ package main
 import (
 	"cpu-emulator/decoder"
 	"fmt"
+	"net"
 	"os"
+	"time"
 )
+
+type debugger struct {
+	instructionExec proceeder
+}
+
+type proceeder interface {
+	next()
+}
+
+type defaultProceeder struct{}
+
+type remoteProceeder struct {
+	conn net.Conn
+}
+
+func (rmp remoteProceeder) next() {
+	nextStep()
+	rmp.conn.Write([]byte("s"))
+}
+
+func (defp defaultProceeder) next() {
+	time.Sleep(200 * time.Millisecond)
+}
 
 func disassebmle(buffer *memory, pc int) int {
 	code := buffer[pc]
@@ -63,7 +88,7 @@ func disassebmle(buffer *memory, pc int) int {
 	case "RZ":
 		fmt.Printf("RZ")
 	case "RET":
-		fmt.Printf("RET")
+		fmt.Printf("RET %s", opcode.Condition)
 	case "JZ":
 		fmt.Printf("JZ 0x%02x%02x", buffer[pc+2], buffer[pc+1])
 		opcodes = 3
@@ -71,7 +96,7 @@ func disassebmle(buffer *memory, pc int) int {
 		fmt.Printf("CZ 0x%02x%02x", buffer[pc+2], buffer[pc+1])
 		opcodes = 3
 	case "CALL":
-		fmt.Printf("CALL 0x%02x%02x", buffer[pc+2], buffer[pc+1])
+		fmt.Printf("CALL %s 0x%02x%02x", opcode.Condition, buffer[pc+2], buffer[pc+1])
 		opcodes = 3
 	case "RNC":
 		fmt.Printf("RNC")
@@ -183,7 +208,7 @@ func disassebmle(buffer *memory, pc int) int {
 		fmt.Printf("RST %s", register)
 	default:
 		if instruction == "ADI" || instruction == "ACI" || instruction == "SUI" || instruction == "SBI" || instruction == "ANI" || instruction == "XRI" || instruction == "ORI" || instruction == "CPI" {
-			fmt.Printf("%s %02x", instruction, buffer[pc+1])
+			fmt.Printf("%s %s %02x", instruction, register, buffer[pc+1])
 			opcodes = 2
 		}
 		opcodes = 1
@@ -214,6 +239,65 @@ func nextStep() {
 	}
 }
 
-func (cpu *cpu) messageOutput() {
+func connRemoteDbg() net.Conn {
+	for {
+		conn, err := net.Dial("tcp", "127.0.0.1:8080")
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			fmt.Println(err)
+		} else {
+			return conn
+		}
+	}
+}
 
+func (dbg debugger) debug(cpu *cpu) {
+	cpu.pc = 0x100
+	// go func() {
+	// 	buff := make([]byte, 1024)
+	// 	for {
+	// 		n, err := dbg.conn.Read(buff)
+	// 		if err != nil {
+	// 			panic(err)
+	// 		}
+	// 		fmt.Println(buff[:n])
+	// 	}
+	// }()
+
+	for cpu.pc < uint16(MemorySize) {
+		pc := cpu.pc
+		disassebmle(cpu.memory, int(pc))
+		debugCpuState(cpu)
+		dbg.instructionExec.next()
+		cpu.step()
+		if cpu.memory[0x79d] > 0 {
+			fmt.Println("change!")
+		}
+	}
+}
+
+func debugInstructions() {
+	cpu := initCPU()
+	pc := 0
+	for pc < len(cpu.memory) {
+		cpu.executeInstruction()
+		n := disassebmle(cpu.memory, int(pc))
+		pc += n
+		time.Sleep(150 * time.Millisecond)
+	}
+}
+
+func initDebugger(flag string) debugger {
+	var dbg debugger
+	fmt.Println(flag)
+	if flag == "-rd" {
+		remoreDbg := remoteProceeder{
+			conn: connRemoteDbg(),
+		}
+		dbg.instructionExec = remoreDbg
+	} else {
+		dbg.instructionExec = defaultProceeder{}
+	}
+
+	return dbg
 }
