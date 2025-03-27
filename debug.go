@@ -1,34 +1,128 @@
 package main
 
 import (
+	"bufio"
 	"cpu-emulator/decoder"
 	"fmt"
+	"log"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
-
-type debugger struct {
-	instructionExec proceeder
-}
 
 type proceeder interface {
 	next()
 }
 
+type debugger struct {
+	instructionExec proceeder
+	advanceOP       *int
+}
+
 type defaultProceeder struct{}
 
 type remoteProceeder struct {
-	conn net.Conn
+	conn       net.Conn
+	ptrAdvance *int
 }
 
-func (rmp remoteProceeder) next() {
-	nextStep()
-	rmp.conn.Write([]byte("s"))
+func (rmp *remoteProceeder) next() {
+	n, s := getInput()
+	fmt.Println(n)
+	*rmp.ptrAdvance = n
+	rmp.conn.Write([]byte(s))
 }
 
 func (defp defaultProceeder) next() {
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(0 * time.Millisecond)
+}
+
+func (dbg debugger) debug(cpu *cpu) {
+	cpu.pc = 0x100
+	for cpu.pc < uint16(MemorySize) {
+		pc := cpu.pc
+		disassebmle(cpu.memory, int(pc))
+		debugCpuState(cpu)
+		if *dbg.advanceOP == 0 {
+			dbg.advance()
+		} else {
+			*dbg.advanceOP -= 1
+		}
+		cpu.step()
+	}
+}
+
+func (dbg debugger) advance() {
+	dbg.instructionExec.next()
+}
+
+func debugInstructions() {
+	cpu := initCPU()
+	pc := 0
+	for pc < len(cpu.memory) {
+		cpu.executeInstruction()
+		n := disassebmle(cpu.memory, int(pc))
+		pc += n
+		time.Sleep(150 * time.Millisecond)
+	}
+}
+
+func initDebugger(flag string) debugger {
+	dbg := debugger{advanceOP: new(int)}
+
+	if flag == "-rd" {
+		dbg.instructionExec = &remoteProceeder{
+			conn:       connRemoteDbg(),
+			ptrAdvance: dbg.advanceOP,
+		}
+	} else {
+		dbg.instructionExec = defaultProceeder{}
+	}
+
+	return dbg
+}
+
+func getInput() (int, string) {
+	var s string
+	buffer := make([]byte, 128)
+	for {
+
+		fmt.Print()
+		r := bufio.NewReader(os.Stdin)
+		n, _ := r.Read(buffer)
+		s = strings.TrimSpace(string(buffer[0:n]))
+
+		if len(s) > 1 {
+
+			n, err := strconv.Atoi(s[2:])
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			return n - 1, s
+
+		} else if s == "q" {
+
+			os.Exit(1)
+
+		} else if s == "s" {
+			return 0, s
+		}
+	}
+}
+
+func connRemoteDbg() net.Conn {
+	for {
+		conn, err := net.Dial("tcp", "127.0.0.1:8080")
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			fmt.Println(err)
+		} else {
+			return conn
+		}
+	}
 }
 
 func disassebmle(buffer *memory, pc int) int {
@@ -219,85 +313,9 @@ func disassebmle(buffer *memory, pc int) int {
 }
 
 func debugCpuState(cpu *cpu) {
-	fmt.Printf(" A:  0x%02x\n BC: 0x%02x\n DE: 0x%02x\n HL: 0x%02x\n", cpu.regs.a, cpu.getPair("B"), cpu.getPair("D"), cpu.getPair("HL"))
-	fmt.Printf(" SP: 0x%02x\n PC: 0x%02x \n", cpu.sp, cpu.pc)
+	fmt.Printf(" A: %d\n B: %d\n C: %d\n D: %d\n E: %d\n  H: %d\n L: %d\n", cpu.regs.a, cpu.regs.b, cpu.regs.c, cpu.regs.d, cpu.regs.e, cpu.regs.h, cpu.regs.l)
+	fmt.Printf(" SP: %02x\n PC: %02x \n", cpu.sp, cpu.pc)
 	fmt.Printf(" flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
 	fmt.Println("=========================================================================")
 
-}
-
-func nextStep() {
-	var s string
-	for {
-		fmt.Print()
-		fmt.Scan(&s)
-		if s == "s" {
-			return
-		} else if s == "q" {
-			os.Exit(1)
-		}
-	}
-}
-
-func connRemoteDbg() net.Conn {
-	for {
-		conn, err := net.Dial("tcp", "127.0.0.1:8080")
-		if err != nil {
-			time.Sleep(200 * time.Millisecond)
-			fmt.Println(err)
-		} else {
-			return conn
-		}
-	}
-}
-
-func (dbg debugger) debug(cpu *cpu) {
-	cpu.pc = 0x100
-	// go func() {
-	// 	buff := make([]byte, 1024)
-	// 	for {
-	// 		n, err := dbg.conn.Read(buff)
-	// 		if err != nil {
-	// 			panic(err)
-	// 		}
-	// 		fmt.Println(buff[:n])
-	// 	}
-	// }()
-
-	for cpu.pc < uint16(MemorySize) {
-		pc := cpu.pc
-		disassebmle(cpu.memory, int(pc))
-		debugCpuState(cpu)
-		dbg.instructionExec.next()
-		cpu.step()
-		if cpu.memory[0x79d] > 0 {
-			fmt.Println("change!")
-		}
-	}
-}
-
-func debugInstructions() {
-	cpu := initCPU()
-	pc := 0
-	for pc < len(cpu.memory) {
-		cpu.executeInstruction()
-		n := disassebmle(cpu.memory, int(pc))
-		pc += n
-		time.Sleep(150 * time.Millisecond)
-	}
-}
-
-func initDebugger(flag string) debugger {
-	var dbg debugger
-	fmt.Println(flag)
-	if flag == "-rd" {
-		remoreDbg := remoteProceeder{
-			conn: connRemoteDbg(),
-		}
-		dbg.instructionExec = remoreDbg
-	} else {
-		dbg.instructionExec = defaultProceeder{}
-	}
-
-	return dbg
 }

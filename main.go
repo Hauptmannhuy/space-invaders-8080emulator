@@ -34,7 +34,7 @@ func main() {
 
 func setFlags() {
 	rFlag := flag.String("r", "", "Path to the ROM file")
-	drFlag := flag.Bool("rd", true, "send command to remote debugger")
+	drFlag := flag.Bool("rd", true, "debug with remote debugger")
 	dFlag := flag.Bool("d", true, "default debug")
 
 	flag.Parse()

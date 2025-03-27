@@ -209,6 +209,8 @@ func (cpu *cpu) getPair(dest string) uint16 {
 	default:
 		if dest == "HL" || dest == "M" || dest == "H" {
 			return make16bit(cpu.regs.h, cpu.regs.l)
+		} else if dest == "SP" {
+			return cpu.sp
 		}
 		log.Fatalf("Unknown pair %s", dest)
 	}
@@ -254,6 +256,8 @@ func (cpu *cpu) updateReg(reg string, val uint8) {
 		cpu.regs.l = val
 	case "A":
 		cpu.regs.a = val
+	case "M":
+		cpu.memory.write(cpu.getPair(reg), val)
 	}
 }
 
@@ -327,34 +331,20 @@ func (cpu *cpu) inx() uint8 {
 }
 
 func (cpu *cpu) inr() uint8 {
-	reg := cpu.currentOp.Register
-	var val uint8
-	if reg == "M" {
-		addr := cpu.getPair(reg)
-		val = cpu.memory.read(addr)
-		val += 1
-		cpu.memory.write(addr, val)
-	} else {
-		val = cpu.getReg(reg) + 1
-		cpu.updateReg(reg, val)
-	}
-	cpu.updateFlags(val)
+	reg := cpu.getReg(cpu.currentOp.Register)
+	res := reg + 1
+	cpu.updateReg(cpu.currentOp.Register, res)
+	cpu.setAux((reg&0x0F == 0x0F))
+	cpu.updateFlags(res, 0)
 	return 1
 }
 
 func (cpu *cpu) dcr() uint8 {
-	reg := cpu.currentOp.Register
-	var val uint8
-	if reg == "M" {
-		addr := cpu.getPair(reg)
-		val = cpu.memory.read(addr)
-		val -= 1
-		cpu.memory.write(addr, val)
-	} else {
-		val = cpu.getReg(reg) - 1
-		cpu.updateReg(reg, val)
-	}
-	cpu.updateFlags(val)
+	reg := cpu.getReg(cpu.currentOp.Register)
+	res := reg - 1
+	cpu.updateReg(cpu.currentOp.Register, res)
+	cpu.setAux((reg&0x0F == 0x00))
+	cpu.updateFlags(res, 0)
 	return 1
 }
 
@@ -369,35 +359,30 @@ func (cpu *cpu) mvi() uint8 {
 	return 2
 }
 
-func (cpu *cpu) rlc() uint8 {
-	reg := "A"
-	regVal := cpu.getReg(reg)
-	prev7Bit := regVal & 0xf
-	regVal = regVal << 1
-	regVal = regVal | prev7Bit
-	cpu.updateReg(reg, regVal)
-	cpu.flags.cy = prev7Bit
-	return 1
-}
-
 func (cpu *cpu) dad() uint8 {
-	destReg := cpu.currentOp.Register
+	operandReg := cpu.currentOp.Register
 	hl := cpu.getPair("HL")
-	value := cpu.getPair(destReg)
-	sum := hl + value
-	if sum < 0xfff {
+	value := cpu.getPair(operandReg)
+
+	res := hl + value
+	sum := uint32(hl) + uint32(value)
+
+	if sum > 65535 {
 		cpu.flags.cy = 1
 	} else {
 		cpu.flags.cy = 0
 	}
+
+	cpu.updatePairRegs("H", uint8(res>>8), uint8(res))
+
 	return 1
 }
 
 func (cpu *cpu) ldax() uint8 {
 	reg := cpu.currentOp.Register
-	pairVal := cpu.getPair(reg)
-	memVal := cpu.memory.read(pairVal)
-	cpu.updateReg(reg, memVal)
+	addr := cpu.getPair(reg)
+	memVal := cpu.memory.read(addr)
+	cpu.regs.a = memVal
 	return 1
 }
 
@@ -407,33 +392,70 @@ func (cpu *cpu) dcx() uint8 {
 	return 1
 }
 
+func (cpu *cpu) rlc() uint8 {
+	accum := cpu.regs.a
+
+	res := bits.RotateLeft8(accum, 1)
+	cpu.regs.a = res
+
+	if (res & 0x01) == 0x01 {
+		cpu.flags.cy = 1
+	} else {
+		cpu.flags.cy = 0
+	}
+
+	return 1
+}
+
 func (cpu *cpu) rrc() uint8 {
-	regVal := cpu.getReg(cpu.currentOp.Register)
-	shifted := regVal >> 1
-	prev0Bit := regVal & 1
-	shifted = (shifted & 0x7f) | (prev0Bit << 7)
-	cpu.updateReg(cpu.currentOp.Register, shifted)
-	cpu.flags.cy = prev0Bit
+	accum := cpu.regs.a
+
+	res := bits.RotateLeft8(accum, -1)
+	cpu.regs.a = res
+
+	if res&0x80 == 0x80 {
+		cpu.flags.cy = 1
+	} else {
+		cpu.flags.cy = 0
+	}
+
 	return 1
 }
 
 // A = A << 1; bit 0 = prev CY; CY = prev bit 7
 func (cpu *cpu) ral() uint8 {
-	regVal := cpu.getReg(cpu.currentOp.Register)
-	newVal := regVal << 1
-	newVal = newVal | cpu.flags.cy
-	cpu.flags.cy = regVal >> 7 & 1
-	cpu.updateReg(cpu.currentOp.Register, newVal)
+	accum := cpu.regs.a
+	carry := cpu.flags.cy
+
+	if (accum & 0x80) == 0x80 {
+		cpu.flags.cy = 1
+	} else {
+		cpu.flags.cy = 0
+	}
+
+	accum = accum << 1
+	accum = accum | carry
+
+	cpu.regs.a = accum
+
 	return 1
 }
 
 // A = A >> 1; bit 7 = prev bit 7; CY = prev bit 0
 func (cpu *cpu) rar() uint8 {
-	regVal := cpu.regs.a
-	prevBit7 := regVal & (1 << 7)
-	newVal := (prevBit7 | regVal>>1)
-	cpu.regs.a = newVal
-	cpu.flags.cy = regVal & 1
+	accum := cpu.regs.a
+	carry := cpu.flags.cy
+
+	if (accum & 0x01) == 0x01 {
+		cpu.flags.cy = 1
+	} else {
+		cpu.flags.cy = 0
+	}
+
+	accum = accum >> 1
+	accum = accum | (carry << 7)
+
+	cpu.regs.a = accum
 	return 1
 }
 
@@ -465,6 +487,22 @@ func (cpu *cpu) cma() uint8 {
 
 // some useless command
 func (cpu *cpu) daa() uint8 {
+	accum := cpu.regs.a
+
+	if accum&0xf > 9 || cpu.flags.ac == 1 {
+		accum += 0x06
+		if (accum & 0x0F) < 0x09 {
+			cpu.flags.ac = 1
+		}
+	}
+
+	if ((accum & 0xF0) > 0x90) || cpu.flags.cy == 1 {
+		accum, cpu.flags.cy = overflowingAdd(accum, 0x60, 0)
+	}
+
+	cpu.regs.a = accum
+	// cpu.updateFlags(cpu.regs.a)
+
 	return 1
 }
 
@@ -491,7 +529,7 @@ func (cpu *cpu) lda() uint8 {
 }
 
 func (cpu *cpu) cmc() uint8 {
-	cpu.flags.cy = ^cpu.flags.cy
+	cpu.flags.cy = 1 ^ cpu.flags.cy
 	return 1
 }
 
@@ -530,6 +568,7 @@ func (cpu *cpu) cmp() uint8 {
 
 	res, carry := overflowingSub(cpu.regs.a, operand, 0)
 	cpu.updateFlags(res, carry)
+	cpu.setAux((cpu.regs.a & 0x0F) < (operand & 0x0F))
 
 	if cpu.currentOp.Instruction == "CPI" {
 		return 2
@@ -604,8 +643,10 @@ func (cpu *cpu) add() uint8 {
 	case "ACI":
 		res, carry = overflowingAdd(prevAccum, operand, cpu.flags.cy)
 	}
+
 	cpu.regs.a = res
 	cpu.updateFlags(res, carry)
+	cpu.setAux((prevAccum&0x0F)+(operand&0x0F) > 0x0F)
 
 	if cpu.currentOp.Instruction == "ADI" || cpu.currentOp.Instruction == "ACI" {
 		return 2
@@ -639,7 +680,7 @@ func (cpu *cpu) sub() uint8 {
 
 	cpu.regs.a = res
 	cpu.updateFlags(res, carry)
-
+	cpu.setAux((prevAccum & 0x0F) < (operand & 0x0F))
 	if cpu.currentOp.Instruction == "SUI" || cpu.currentOp.Instruction == "SBI" {
 		return 2
 	}
@@ -737,19 +778,20 @@ func (cpu *cpu) push() uint8 {
 	sp := cpu.sp
 	switch cpu.currentOp.Register {
 	case "B":
-		cpu.memory.write(sp-2, cpu.regs.c)
 		cpu.memory.write(sp-1, cpu.regs.b)
+		cpu.memory.write(sp-2, cpu.regs.c)
 	case "D":
-		cpu.memory.write(sp-2, cpu.regs.e)
 		cpu.memory.write(sp-1, cpu.regs.d)
+		cpu.memory.write(sp-2, cpu.regs.e)
 	case "H":
-		cpu.memory.write(sp-2, cpu.regs.l)
 		cpu.memory.write(sp-1, cpu.regs.h)
+		cpu.memory.write(sp-2, cpu.regs.l)
 	case "PSW":
-		cpu.memory.write(sp-2, cpu.flags.s|cpu.flags.z<<1|cpu.flags.ac<<2|cpu.flags.p<<3|cpu.flags.cy<<4)
 		cpu.memory.write(sp-1, cpu.regs.a)
+
+		cpu.memory.write(sp-2, cpu.flags.cy|cpu.flags.p<<2|cpu.flags.ac<<4|cpu.flags.z<<6|cpu.flags.s<<7)
 	}
-	cpu.sp += 2
+	cpu.sp -= 2
 	return 1
 }
 
@@ -757,14 +799,14 @@ func (cpu *cpu) pop() uint8 {
 	sp := cpu.sp
 	switch cpu.currentOp.Register {
 	case "B":
-		cpu.regs.c = cpu.memory.read(sp)
 		cpu.regs.b = cpu.memory.read(sp + 1)
+		cpu.regs.c = cpu.memory.read(sp)
 	case "D":
-		cpu.regs.e = cpu.memory.read(sp)
 		cpu.regs.d = cpu.memory.read(sp + 1)
+		cpu.regs.e = cpu.memory.read(sp)
 	case "H":
-		cpu.regs.l = cpu.memory.read(sp)
 		cpu.regs.h = cpu.memory.read(sp + 1)
+		cpu.regs.l = cpu.memory.read(sp)
 	case "PSW":
 		psw := cpu.memory.read(sp)
 		cpu.flags.cy = psw & 0x1
@@ -864,6 +906,14 @@ func (cpu *cpu) updateFlags(val uint8, carry ...uint8) {
 	}
 
 	cpu.flags.p = parity(val)
+}
+
+func (cpu *cpu) setAux(expression bool) {
+	if expression {
+		cpu.flags.ac = 1
+	} else {
+		cpu.flags.ac = 0
+	}
 }
 
 func overflowingSub(x, y, cy uint8) (uint8, uint8) {
