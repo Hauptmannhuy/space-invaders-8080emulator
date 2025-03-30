@@ -1,365 +1,414 @@
 package decoder
 
+import (
+	misc "cpu-emulator/utils"
+	"fmt"
+)
+
 type Opcode struct {
 	Code        byte
-	Instruction string
-	Register    string
-	Condition   string
+	Name        string
+	Instruction uint8
+	Condition   uint8
+	LowNibble   uint8
+	HighNibble  uint8
 }
 
 // conditions
 const (
-	NotZero    = "NZ"
-	Zero       = "Z"
-	NoCarry    = "NC"
-	Carry      = "C"
-	ParityOdd  = "PO"
-	ParityEven = "PE"
-	Positive   = "P"
-	Minus      = "M"
+	NotZero uint8 = iota + 1
+	Zero
+	NoCarry
+	Carry
+	ParityOdd
+	ParityEven
+	Minus
+	Positive
+)
+
+const (
+	NOP uint8 = iota + 1
+	RLC
+	RRC
+	RAL
+	RAR
+	RIM
+	SHLD
+	DAA
+	LHLD
+	CMA
+	SIM
+	STA
+	STC
+	LDA
+	CMC
+	RNZ
+	JNZ
+	JMP
+	CNZ
+	RZ
+	RET
+	JZ
+	CZ
+	CALL
+	RNC
+	JNC
+	OUT
+	CNC
+	RC
+	JC
+	IN
+	CC
+	RPO
+	JPO
+	XTHL
+	CPO
+	RPE
+	PCHL
+	JPE
+	XCHG
+	CPE
+	RP
+	JP
+	DI
+	CP
+	RM
+	SPHL
+	JM
+	EI
+	CM
+	LXI
+	STAX
+	INX
+	INR
+	DCR
+	MVI
+	DAD
+	LDAX
+	DCX
+	MOV
+	ADD
+	ADC
+	SUB
+	SBB
+	ANA
+	XRA
+	ORA
+	CMP
+	POP
+	PUSH
+	RST
+	ADI
+	ACI
+	SUI
+	SBI
+	ANI
+	XRI
+	ORI
+	CPI
+	HLT
 )
 
 const BDOS = 0x05
 
-var lxi = map[byte]string{
-	0x01: "B",
-	0x11: "D",
-	0x21: "H",
-	0x31: "SP",
-}
+func GetInstruction(memory *byte) *Opcode {
+	var instruction uint8
+	var name string
+	lowNibble := *memory & 0x0f
+	highNibble := (*memory & 0xf0) >> 4
+	code := *memory
 
-var ldax = map[byte]string{
-	0x0a: "B",
-	0x1a: "D",
-}
-var stax = map[byte]string{
-	0x02: "B",
-	0x12: "D"}
-var inx = map[byte]string{
-	0x03: "B",
-	0x13: "D",
-	0x23: "H",
-	0x33: "SP",
-}
-var inr = map[byte]string{
-	0x04: "B",
-	0x0c: "C",
-	0x14: "D",
-	0x1c: "E",
-	0x24: "H",
-	0x2c: "L",
-	0x34: "M",
-	0x3c: "A",
-}
-var dcr = map[byte]string{
-	0x05: "B", 0x0d: "C", 0x15: "D", 0x1d: "E",
-	0x25: "H", 0x2d: "L", 0x35: "M", 0x3d: "A",
-}
-var mvi = map[byte]string{
-	0x06: "B", 0x0e: "C", 0x16: "D", 0x1e: "E",
-	0x26: "H", 0x2e: "L", 0x36: "M", 0x3e: "A",
-}
-var dad = map[byte]string{
-	0x9:  "B",
-	0x19: "D",
-	0x29: "H",
-	0x39: "SP",
-}
-var dcx = map[byte]string{
-	0x0b: "B",
-	0x1b: "D",
-	0x2b: "H",
-	0x3b: "SP",
-}
-var mov = map[byte]string{
-	0x40: "B,B", 0x41: "B,C", 0x42: "B,D", 0x43: "B,E",
-	0x44: "B,H", 0x45: "B,L", 0x46: "B,M", 0x47: "B,A",
-
-	0x48: "C,B", 0x49: "C,C", 0x4a: "C,D", 0x4b: "C,E",
-	0x4c: "C,H", 0x4d: "C,L", 0x4e: "C,M", 0x4f: "C,A",
-
-	0x50: "D,B", 0x51: "D,C", 0x52: "D,D", 0x53: "D,E",
-	0x54: "D,H", 0x55: "D,L", 0x56: "D,M", 0x57: "D,A",
-
-	0x58: "E,B", 0x59: "E,C", 0x5a: "E,D", 0x5b: "E,E",
-	0x5c: "E,H", 0x5d: "E,L", 0x5e: "E,M", 0x5f: "E,A",
-
-	0x60: "H,B", 0x61: "H,C", 0x62: "H,D", 0x63: "H,E",
-	0x64: "H,H", 0x65: "H,L", 0x66: "H,M", 0x67: "H,A",
-
-	0x68: "L,B", 0x69: "L,C", 0x6a: "L,D", 0x6b: "L,E",
-	0x6c: "L,H", 0x6d: "L,L", 0x6e: "L,M", 0x6f: "L,A",
-
-	0x70: "M,B", 0x71: "M,C", 0x72: "M,D", 0x73: "M,E",
-	0x74: "M,H", 0x75: "M,L", 0x77: "M,A",
-
-	0x78: "A,B", 0x79: "A,C", 0x7a: "A,D", 0x7b: "A,E",
-	0x7c: "A,H", 0x7d: "A,L", 0x7e: "A,M", 0x7f: "A,A",
-}
-
-var add = map[byte]string{
-	0x80: "B", 0x81: "C", 0x82: "D", 0x83: "E",
-	0x84: "H", 0x85: "L", 0x86: "M", 0x87: "A",
-}
-
-var adc = map[byte]string{
-	0x88: "B", 0x89: "C", 0x8a: "D", 0x8b: "E",
-	0x8c: "H", 0x8d: "L", 0x8e: "M", 0x8f: "A",
-}
-
-var sub = map[byte]string{
-	0x90: "B", 0x91: "C", 0x92: "D", 0x93: "E",
-	0x94: "H", 0x95: "L", 0x96: "M", 0x97: "A",
-}
-
-var sbb = map[byte]string{
-	0x98: "B", 0x99: "C", 0x9a: "D", 0x9b: "E",
-	0x9c: "H", 0x9d: "L", 0x9e: "M", 0x9f: "A",
-}
-
-var ana = map[byte]string{
-	0xa0: "B", 0xa1: "C", 0xa2: "D", 0xa3: "E",
-	0xa4: "H", 0xa5: "L", 0xa6: "M", 0xa7: "A",
-}
-
-var xra = map[byte]string{
-	0xa8: "B", 0xa9: "C", 0xaa: "D", 0xab: "E",
-	0xac: "H", 0xad: "L", 0xae: "M", 0xaf: "A",
-}
-
-var ora = map[byte]string{
-	0xb0: "B", 0xb1: "C", 0xb2: "D", 0xb3: "E",
-	0xb4: "H", 0xb5: "L", 0xb6: "M", 0xb7: "A",
-}
-
-var cmp = map[byte]string{
-	0xb8: "B", 0xb9: "C", 0xba: "D", 0xbb: "E",
-	0xbc: "H", 0xbd: "L", 0xbe: "M", 0xbf: "A",
-}
-
-var pop = map[byte]string{
-	0xc1: "B", 0xd1: "D", 0xe1: "H", 0xf1: "PSW",
-}
-
-var push = map[byte]string{
-	0xc5: "B", 0xd5: "D", 0xe5: "H", 0xf5: "PSW",
-}
-
-var rst = map[byte]string{
-	0xc7: "0", 0xcf: "1", 0xd7: "2", 0xdf: "3",
-	0xe7: "4", 0xef: "5", 0xf7: "6", 0xff: "7",
-}
-
-func GetInstruction(code byte) *Opcode {
-	var instruction string
 	switch code {
 	case 0x00:
-		instruction = "NOP"
+		instruction = NOP
+		name = "NOP"
 	case 0x07:
-		instruction = "RLC"
+		instruction = RLC
+		name = "RLC"
 	case 0x0f:
-		instruction = "RRC"
+		instruction = RRC
+		name = "RRC"
 	case 0x17:
-		instruction = "RAL"
+		instruction = RAL
+		name = "RAL"
 	case 0x1f:
-		instruction = "RAR"
+		instruction = RAR
+		name = "RAR"
 	case 0x20:
-		instruction = "RIM"
+		instruction = RIM
+		name = "RIM"
 	case 0x22:
-		instruction = "SHLD"
+		instruction = SHLD
+		name = fmt.Sprintf("SHLD 0x%x", misc.Make16bit(*memory+2, *memory+1))
 	case 0x27:
-		instruction = "DAA"
+		instruction = DAA
+		name = "DAA"
 	case 0x2a:
-		instruction = "LHLD"
+		instruction = LHLD
+		name = fmt.Sprintf("LHLD 0x%x", misc.Make16bit(*memory+2, *memory+1))
 	case 0x2f:
-		instruction = "CMA"
+		instruction = CMA
+		name = "CMA"
 	case 0x30:
-		instruction = "SIM"
+		instruction = SIM
+		name = "SIM"
 	case 0x32:
-		instruction = "STA"
+		instruction = STA
+		name = fmt.Sprintf("STA 0x%x", misc.Make16bit(*memory+2, *memory+1))
 	case 0x37:
-		instruction = "STC"
+		instruction = STC
+		name = "STC"
 	case 0x3a:
-		instruction = "LDA"
+		instruction = LDA
+		name = fmt.Sprintf("LDA 0x%x", misc.Make16bit(*memory+2, *memory+1))
 	case 0x3f:
-		instruction = "CMC"
+		instruction = CMC
+		name = "CMC"
 	case 0xc0:
-		instruction = "RNZ"
+		instruction = RNZ
+		name = "RNZ"
 	case 0xc2:
-		instruction = "JNZ"
+		instruction = JNZ
+		name = "JNZ"
 	case 0xc3:
-		instruction = "JMP"
+		instruction = JMP
+		name = "JMP"
 	case 0xc4:
-		instruction = "CNZ"
+		instruction = CNZ
+		name = "CNZ"
 	case 0xc8:
-		instruction = "RZ"
+		instruction = RZ
+		name = "RZ"
 	case 0xc9:
-		instruction = "RET"
+		instruction = RET
+		name = "RET"
 	case 0xca:
-		instruction = "JZ"
+		instruction = JZ
+		name = "JZ"
 	case 0xcc:
-		instruction = "CZ"
+		instruction = CZ
+		name = "CZ"
 	case 0xcd:
-		instruction = "CALL"
+		instruction = CALL
+		name = fmt.Sprintf("CALL 0x%x", misc.Make16bit(*memory+2, *memory+1))
 	case 0xd0:
-		instruction = "RNC"
+		instruction = RNC
+		name = "RNC"
 	case 0xd2:
-		instruction = "JNC"
+		instruction = JNC
+		name = "JNC"
 	case 0xd3:
-		instruction = "OUT"
+		instruction = OUT
+		name = "OUT"
 	case 0xd4:
-		instruction = "CNC"
+		instruction = CNC
+		name = "CNC"
 	case 0xd8:
-		instruction = "RC"
+		instruction = RC
+		name = "RC"
 	case 0xda:
-		instruction = "JC"
+		instruction = JC
+		name = "JC"
 	case 0xdb:
-		instruction = "IN"
+		instruction = IN
+		name = "IN"
 	case 0xdc:
-		instruction = "CC"
+		instruction = CC
+		name = "CC"
 	case 0xe0:
-		instruction = "RPO"
+		instruction = RPO
+		name = "RPO"
 	case 0xe2:
-		instruction = "JPO"
+		instruction = JPO
+		name = "JPO"
 	case 0xe3:
-		instruction = "XTHL"
+		instruction = XTHL
+		name = "XTHL"
 	case 0xe4:
-		instruction = "CPO"
+		instruction = CPO
+		name = "CPO"
 	case 0xe8:
-		instruction = "RPE"
+		instruction = RPE
+		name = "RPE"
 	case 0xe9:
-		instruction = "PCHL"
+		instruction = PCHL
+		name = "PCHL"
 	case 0xea:
-		instruction = "JPE"
+		instruction = JPE
+		name = "JPE"
 	case 0xeb:
-		instruction = "XCHG"
+		instruction = XCHG
+		name = "XCHG"
 	case 0xec:
-		instruction = "CPE"
+		instruction = CPE
+		name = "CPE"
 	case 0xf0:
-		instruction = "RP"
+		instruction = RP
+		name = "RP"
 	case 0xf2:
-		instruction = "JP"
+		instruction = JP
+		name = "JP"
 	case 0xf3:
-		instruction = "DI"
+		instruction = DI
+		name = "DI"
 	case 0xf4:
-		instruction = "CP"
+		instruction = CP
+		name = "CP"
 	case 0xf8:
-		instruction = "RM"
+		instruction = RM
+		name = "RM"
 	case 0xf9:
-		instruction = "SPHL"
+		instruction = SPHL
+		name = "SPHL"
 	case 0xfa:
-		instruction = "JM"
+		instruction = JM
+		name = "JM"
 	case 0xfb:
-		instruction = "EI"
+		instruction = EI
+		name = "EI"
 	case 0xfc:
-		instruction = "CM"
+		instruction = CM
+		name = "CM"
 	default:
+
 		if code >= 0x01 && code <= 0x31 && code&0xF == 0x1 {
-			instruction = "LXI"
+			instruction = LXI
+			name = fmt.Sprintf("LXI %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(*memory+2, *memory+1))
+
 		} else if code >= 0x02 && code <= 0x12 && code&0xF == 0x2 {
-			instruction = "STAX"
+			instruction = STAX
+			name = fmt.Sprintf("STAX %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(*memory+2, *memory+1))
 		} else if code >= 0x03 && code <= 0x33 && code&0xF == 0x3 {
-			instruction = "INX"
+			name = fmt.Sprintf("INX %s", misc.RegPairToString(highNibble))
+			instruction = INX
 		} else if code >= 0x04 && code <= 0x3c && (code&0xF == 0x4 || code&0xf == 0xc) {
-			instruction = "INR"
+			name = fmt.Sprintf("INR %s", misc.RegToString(code>>3))
+			instruction = INR
 		} else if code >= 0x05 && code <= 0x3d && (code&0xf == 0xd || code&0xf == 0x5) {
-			instruction = "DCR"
+			name = "DCR"
+			name = fmt.Sprintf("DCR %s", misc.RegToString(code>>3))
+			instruction = DCR
 		} else if code >= 0x06 && code <= 0x3e && (code&0xf == 0x6 || code&0xf == 0xe) {
-			instruction = "MVI"
+			name = fmt.Sprintf("MVI %s 0x%x", misc.RegToString(code>>3), *memory+1)
+			instruction = MVI
 		} else if code >= 0x09 && code <= 0x39 && code&0xf == 0x9 {
-			instruction = "DAD"
+			name = fmt.Sprintf("DAD %s", misc.RegPairToString(highNibble))
+			instruction = DAD
 		} else if code >= 0x0a && code <= 0x1a && code&0xf == 0xa {
-			instruction = "LDAX"
+			name = fmt.Sprintf("LDAX %s", misc.RegPairToString(highNibble))
+			instruction = LDAX
 		} else if code >= 0x0b && code <= 0x3b && code&0xf == 0xb {
-			instruction = "DCX"
+			name = fmt.Sprintf("DCX %s", misc.RegPairToString(highNibble))
+			instruction = DCX
 		} else if code >= 0x40 && 0x7f >= code && code != 0x76 {
-			instruction = "MOV"
+			name = fmt.Sprintf("MOV %s, %s", misc.RegToString(code>>3), misc.RegToString(code&0b111))
+			instruction = MOV
 		} else if code >= 0x80 && code <= 0x87 {
-			instruction = "ADD"
+			name = fmt.Sprintf("ADD %s", misc.RegToString(lowNibble))
+			instruction = ADD
 		} else if code >= 0x88 && code <= 0x8f {
-			instruction = "ADC"
+			name = "ADC"
+			name = fmt.Sprintf("ADC %s", misc.RegToString(lowNibble))
+			instruction = ADC
 		} else if code >= 0x90 && code <= 0x97 {
-			instruction = "SUB"
+			name = fmt.Sprintf("SUB %s", misc.RegToString(lowNibble))
+			instruction = SUB
 		} else if code >= 0x98 && code <= 0x9f {
-			instruction = "SBB"
+			name = fmt.Sprintf("SBB %s", misc.RegToString(lowNibble))
+			instruction = SBB
 		} else if code >= 0xa0 && code <= 0xa7 {
-			instruction = "ANA"
+			name = fmt.Sprintf("ANA %s", misc.RegToString(lowNibble))
+			instruction = ANA
 		} else if code >= 0xa8 && code <= 0xaf {
-			instruction = "XRA"
+			name = fmt.Sprintf("XRA %s", misc.RegToString(lowNibble))
+			instruction = XRA
 		} else if code >= 0xb0 && code <= 0xb7 {
-			instruction = "ORA"
+			name = fmt.Sprintf("ORA %s", misc.RegToString(lowNibble))
+			instruction = ORA
 		} else if code >= 0xb8 && code <= 0xbf {
-			instruction = "CMP"
+			name = fmt.Sprintf("CMP %s", misc.RegToString(lowNibble))
+			instruction = CMP
 		} else if code >= 0xc1 && code <= 0xf1 && code&0xf == 0x1 {
-			instruction = "POP"
+			if code == 0xf1 {
+				name = "POP PSW"
+			} else {
+				name = fmt.Sprintf("POP %s", misc.RegPairToString(highNibble))
+			}
+			instruction = POP
 		} else if code >= 0xc5 && code <= 0xf5 && code&0xf == 0x5 {
-			instruction = "PUSH"
+			if code == 0xf5 {
+				name = "PUSH PSW"
+			} else {
+				name = fmt.Sprintf("PUSH %s", misc.RegPairToString(highNibble))
+			}
+			instruction = PUSH
 		} else if code >= 0xc6 && code <= 0xfe && (code&0xf == 0x6 || code&0xf == 0xe) {
-			instructs := map[byte]string{
+
+			instructs := map[byte]uint8{
+				0xc6: ADI, 0xce: ACI, 0xd6: SUI, 0xde: SBI, 0xe6: ANI,
+				0xee: XRI, 0xf6: ORI, 0xfe: CPI,
+			}
+			names := map[byte]string{
 				0xc6: "ADI", 0xce: "ACI", 0xd6: "SUI", 0xde: "SBI", 0xe6: "ANI",
 				0xee: "XRI", 0xf6: "ORI", 0xfe: "CPI",
 			}
-			instruct := instructs[code]
-			instruction = instruct
 
+			name = fmt.Sprintf("%s 0x%0x", names[code], *memory+1)
+			instruction = instructs[code]
 		} else if code >= 0xc7 && code <= 0xff && (code&0xf == 0x7 || code&0xf == 0xf) {
-			instruction = "RST"
+			name = "RST"
+			instruction = RST
 		}
 	}
 	opcode := &Opcode{
 		Code:        code,
+		Name:        name,
 		Instruction: instruction,
-		Register:    GetDestination(instruction, code),
+		LowNibble:   lowNibble,
+		HighNibble:  highNibble,
 	}
-	if (code != 0xd9 && code != 0xcb) && (code >= 0xc0 && code <= 0xff) && (string(instruction[0]) == "J" || string(instruction[0]) == "R" || string(instruction[0]) == "C") {
+	if (code != 0xd9 && code != 0xcb) && (code >= 0xc0 && code <= 0xff) && (string(opcode.Name[0]) == "J" || string(opcode.Name[0]) == "R" || string(opcode.Name[0]) == "C") {
 		setConditionOpcode(opcode)
 	}
 	return opcode
 }
 
 func setConditionOpcode(opcode *Opcode) {
-	condition := opcode.Instruction[1:]
+	condition := strConditionToByte(string(opcode.Name[1:]))
 	if condition == NotZero || condition == Zero || condition == NoCarry || condition == Carry || condition == ParityOdd || condition == ParityEven || condition == Minus || condition == Positive {
 		opcode.Condition = condition
-		var condInstruct string
-		switch string(opcode.Instruction[0]) {
+		var name string
+		switch string(opcode.Name[0]) {
 		case "J":
-			condInstruct = "JMP"
+			name = "JMP"
 		case "R":
-			condInstruct = "RET"
+			name = "RET"
 		case "C":
-			condInstruct = "CALL"
+			name = "CALL"
 		}
-		opcode.Instruction = condInstruct
+		opcode.Name = name + " " + opcode.Name[1:]
 	}
 }
 
-func GetDestination(instruction string, code byte) string {
-
-	regs := map[string]map[byte]string{
-		"LXI":  lxi,
-		"STAX": stax,
-		"LDAX": ldax,
-		"INX":  inx,
-		"INR":  inr,
-		"DCR":  dcr,
-		"MVI":  mvi,
-		"DAD":  dad,
-		"DCX":  dcx,
-		"MOV":  mov,
-		"ADD":  add,
-		"ADC":  adc,
-		"SUB":  sub,
-		"SBB":  sbb,
-		"ANA":  ana,
-		"XRA":  xra,
-		"ORA":  ora,
-		"CMP":  cmp,
-		"POP":  pop,
-		"PUSH": push,
-		"RST":  rst,
+func strConditionToByte(cond string) byte {
+	switch cond {
+	case "NZ":
+		return NotZero
+	case "Z":
+		return Zero
+	case "NC":
+		return NoCarry
+	case "C":
+		return Carry
+	case "PO":
+		return ParityOdd
+	case "PE":
+		return ParityEven
+	case "P":
+		return Minus
+	case "M":
+		return Positive
+	default:
+		return 0
 	}
-	return regs[instruction][code]
 }
-
-// change string operand assignment to uint8 constans
