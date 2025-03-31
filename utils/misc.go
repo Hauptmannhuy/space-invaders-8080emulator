@@ -18,9 +18,10 @@ func RegToString(code uint8) string {
 		return "H"
 	case 0x05:
 		return "L"
-
+	case 0x06:
+		return "MEM"
 	default:
-		log.Fatal("Invalid register code")
+		log.Fatal("Invalid register code %d", code)
 		return ""
 	}
 }
@@ -43,4 +44,20 @@ func RegPairToString(code uint8) string {
 
 func Make16bit(hi, lo uint8) uint16 {
 	return (uint16(hi) << 8) | uint16(lo)
+}
+
+func OverflowingSub(x, y, cy uint8) (uint8, uint8) {
+	var carry uint8
+	if int16(x)-int16(y)-int16(cy) < 0 {
+		carry = 1
+	}
+	return x - y - cy, carry
+}
+
+func OverflowingAdd(x, y, cy uint8) (uint8, uint8) {
+	var carry uint8
+	if uint16(x)+uint16(y)+uint16(cy) >= 255 {
+		carry = 1
+	}
+	return x + y + cy, carry
 }

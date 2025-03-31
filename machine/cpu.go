@@ -168,12 +168,16 @@ func (cpu *Cpu) executeInstruction() uint8 {
 		return cpu.call()
 	case decoder.CNC:
 		return cpu.call()
+	case decoder.CP:
+		return cpu.call()
 
 	case decoder.RET:
 		return cpu.ret()
 	case decoder.RC:
 		return cpu.ret()
 	case decoder.RZ:
+		return cpu.ret()
+	case decoder.RNZ:
 		return cpu.ret()
 	case decoder.RM:
 		return cpu.ret()
@@ -266,20 +270,20 @@ func (cpu *Cpu) inx() uint8 {
 }
 
 func (cpu *Cpu) inr() uint8 {
-	reg := cpu.currentOp.LowNibble
+	reg := cpu.currentOp.Code >> 3
 	regVal := cpu.GetReg(reg)
 	res := regVal + 1
-	cpu.updateReg(cpu.currentOp.LowNibble, res)
+	cpu.updateReg(reg, res)
 	cpu.setAux((regVal&0x0F == 0x0F))
 	cpu.updateFlags(res, 0)
 	return 1
 }
 
 func (cpu *Cpu) dcr() uint8 {
-	reg := cpu.currentOp.LowNibble
+	reg := cpu.currentOp.Code >> 3
 	regVal := cpu.GetReg(reg)
 	res := regVal - 1
-	cpu.updateReg(cpu.currentOp.LowNibble, res)
+	cpu.updateReg(reg, res)
 	cpu.setAux((regVal&0x0F == 0x00))
 	cpu.updateFlags(res, 0)
 	return 1
@@ -287,7 +291,7 @@ func (cpu *Cpu) dcr() uint8 {
 
 func (cpu *Cpu) mvi() uint8 {
 	immediate := cpu.memory[cpu.pc+1]
-	cpu.updateReg(cpu.currentOp.LowNibble, immediate)
+	cpu.updateReg((cpu.currentOp.Code >> 3), immediate)
 	return 2
 }
 
@@ -430,7 +434,7 @@ func (cpu *Cpu) daa() uint8 {
 	}
 
 	if ((accum & 0xF0) > 0x90) || cpu.flags.cy == 1 {
-		accum, cpu.flags.cy = overflowingAdd(accum, 0x60, 0)
+		accum, cpu.flags.cy = misc.OverflowingAdd(accum, 0x60, 0)
 	}
 
 	cpu.regs.a = accum
@@ -470,7 +474,7 @@ func (cpu *Cpu) mov() uint8 {
 	sReg := cpu.currentOp.LowNibble
 	dReg := (cpu.currentOp.Code >> 3) & 0b111
 	sRegVal := cpu.GetReg(sReg)
-	cpu.updateReg(sRegVal, dReg)
+	cpu.updateReg(dReg, sRegVal)
 	return 1
 }
 
@@ -489,7 +493,7 @@ func (cpu *Cpu) cmp() uint8 {
 		operand = cpu.GetReg(cpu.currentOp.LowNibble)
 	}
 
-	res, carry := overflowingSub(cpu.regs.a, operand, 0)
+	res, carry := misc.OverflowingSub(cpu.regs.a, operand, 0)
 	cpu.updateFlags(res, carry)
 	cpu.setAux((cpu.regs.a & 0x0F) < (operand & 0x0F))
 
@@ -558,13 +562,13 @@ func (cpu *Cpu) add() uint8 {
 
 	switch cpu.currentOp.Instruction {
 	case decoder.ADD:
-		res, carry = overflowingAdd(prevAccum, operand, 0)
+		res, carry = misc.OverflowingAdd(prevAccum, operand, 0)
 	case decoder.ADC:
-		res, carry = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+		res, carry = misc.OverflowingAdd(prevAccum, operand, cpu.flags.cy)
 	case decoder.ADI:
-		res, carry = overflowingAdd(prevAccum, operand, 0)
+		res, carry = misc.OverflowingAdd(prevAccum, operand, 0)
 	case decoder.ACI:
-		res, carry = overflowingAdd(prevAccum, operand, cpu.flags.cy)
+		res, carry = misc.OverflowingAdd(prevAccum, operand, cpu.flags.cy)
 	}
 
 	cpu.regs.a = res
@@ -592,13 +596,13 @@ func (cpu *Cpu) sub() uint8 {
 
 	switch cpu.currentOp.Instruction {
 	case decoder.SUB:
-		res, carry = overflowingSub(prevAccum, operand, 0)
+		res, carry = misc.OverflowingSub(prevAccum, operand, 0)
 	case decoder.SBB:
-		res, carry = overflowingSub(prevAccum, operand, cpu.flags.cy)
+		res, carry = misc.OverflowingSub(prevAccum, operand, cpu.flags.cy)
 	case decoder.SUI:
-		res, carry = overflowingSub(prevAccum, operand, 0)
+		res, carry = misc.OverflowingSub(prevAccum, operand, 0)
 	case decoder.SBI:
-		res, carry = overflowingSub(prevAccum, operand, cpu.flags.cy)
+		res, carry = misc.OverflowingSub(prevAccum, operand, cpu.flags.cy)
 	}
 
 	cpu.regs.a = res
@@ -700,14 +704,17 @@ func (cpu *Cpu) ret() uint8 {
 func (cpu *Cpu) push() uint8 {
 	sp := cpu.sp
 	reg := cpu.currentOp.HighNibble
-	msb := cpu.memory.read(sp - 1)
-	lsb := cpu.memory.read(sp - 2)
 
-	if reg&0b11 == PSW {
+	pairVal := cpu.getPair(reg)
+	lsb := uint8(pairVal)
+	msb := uint8((pairVal & 0xff00) >> 8)
+
+	if reg&0b11 == SP_REG {
 		cpu.memory.write(sp-1, cpu.regs.a)
 		cpu.memory.write(sp-2, cpu.flags.cy|cpu.flags.p<<2|cpu.flags.ac<<4|cpu.flags.z<<6|cpu.flags.s<<7)
 	} else {
-		cpu.updatePairRegs(reg, msb, lsb)
+		cpu.memory.write(sp-1, msb)
+		cpu.memory.write(sp-2, lsb)
 	}
 	cpu.sp -= 2
 
@@ -720,7 +727,7 @@ func (cpu *Cpu) pop() uint8 {
 	msb := cpu.memory.read(sp + 1)
 	lsb := cpu.memory.read(sp)
 
-	if reg&0b11 == PSW {
+	if reg&0b11 == SP_REG {
 		psw := cpu.memory.read(sp)
 		cpu.flags.cy = psw & 0x1
 		cpu.flags.p = (psw >> 2) & 0x1
@@ -792,21 +799,5 @@ func (cpu *Cpu) di() uint8 {
 
 func (cpu *Cpu) pchl() uint8 {
 	cpu.pc = misc.Make16bit(cpu.regs.h, cpu.regs.l)
-	return 1
-}
-
-func overflowingSub(x, y, cy uint8) (uint8, uint8) {
-	var carry uint8
-	if int16(x)-int16(y)-int16(cy) < 0 {
-		carry = 1
-	}
-	return x - y - cy, carry
-}
-
-func overflowingAdd(x, y, cy uint8) (uint8, uint8) {
-	var carry uint8
-	if uint16(x)+uint16(y)+uint16(cy) >= 255 {
-		carry = 1
-	}
-	return x + y + cy, carry
+	return 0
 }

@@ -4,33 +4,34 @@ import (
 	"cpu-emulator/machine"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 )
 
 const defaultPath string = "./roms/space-invaders.rom"
 
 func main() {
-	// setFlags()
+	setFlags()
 
-	// args := os.Args[1:]
-	// flag := os.Args[3]
-	// cpu := machine.InitCpu()
-	// buff, err := os.ReadFile(args[1])
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-	// cpu.LoadRom(buff)
-
-	// if flag == "-rd" || flag == "-d" {
-	// 	dbg := machine.InitDebugger(flag)
-	// 	dbg.Debug(cpu)
-	// }
-
+	args := os.Args[1:]
+	flag := os.Args[3]
 	cpu := machine.InitCpu()
-	buff, _ := os.ReadFile("./roms/cpudiag.bin")
+	buff, err := os.ReadFile(args[1])
+	if err != nil {
+		log.Panic(err)
+	}
 	cpu.LoadRom(buff)
-	dbg := machine.InitDebugger("-d")
-	dbg.Debug(cpu)
+
+	if flag == "-rd" || flag == "-d" {
+		dbg := machine.InitDebugger(flag)
+		dbg.Debug(cpu)
+	}
+
+	// cpu := machine.InitCpu()
+	// buff, _ := os.ReadFile("./roms/cpudiag.bin")
+	// cpu.LoadRom(buff)
+	// dbg := machine.InitDebugger("-d")
+	// dbg.Debug(cpu)
 }
 
 func setFlags() {

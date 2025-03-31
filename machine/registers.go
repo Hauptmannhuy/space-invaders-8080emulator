@@ -27,8 +27,6 @@ const (
 	PC_REG uint8 = 0b100
 )
 
-const PSW uint8 = 0b1010
-
 type registers struct {
 	b, c, d, e, h, l, a uint8
 }

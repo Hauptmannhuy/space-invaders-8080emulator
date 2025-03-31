@@ -405,9 +405,9 @@ func strConditionToByte(cond string) byte {
 	case "PE":
 		return ParityEven
 	case "P":
-		return Minus
-	case "M":
 		return Positive
+	case "M":
+		return Minus
 	default:
 		return 0
 	}
