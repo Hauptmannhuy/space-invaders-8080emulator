@@ -39,7 +39,6 @@ func (defp defaultProceeder) next() {
 }
 
 func (dbg debugger) Debug(cpu *Cpu) {
-	cpu.pc = 0x100
 	for cpu.pc < uint16(MemorySize) {
 		disassebmle(cpu)
 		debugCpuState(cpu)
@@ -55,17 +54,6 @@ func (dbg debugger) Debug(cpu *Cpu) {
 func (dbg debugger) advance() {
 	dbg.instructionExec.next()
 }
-
-// func debugInstructions() {
-// 	cpu := InitCpu()
-// 	pc := 0
-// 	for pc < len(cpu.memory) {
-// 		cpu.executeInstruction()
-// 		n := disassebmle(cpu.memory, int(pc))
-// 		pc += n
-// 		time.Sleep(150 * time.Millisecond)
-// 	}
-// }
 
 func InitDebugger(flag string) debugger {
 	dbg := debugger{advanceOP: new(int)}
@@ -126,13 +114,14 @@ func connRemoteDbg() net.Conn {
 func disassebmle(cpuState *Cpu) {
 	pc := cpuState.pc
 	opcode := getOpcode(&cpuState.memory[pc])
-	fmt.Printf("%02x ", pc)
+	fmt.Printf("PC: 0x%02x\n", pc)
+	fmt.Printf("SP: 0x%02x\n", cpuState.sp)
 	fmt.Printf("Instruction: %s ", opcode.Name)
 	fmt.Printf("          Immediate: 0x%02x\n", cpuState.memory[pc+1])
 }
 
 func debugCpuState(cpu *Cpu) {
-	fmt.Printf(" A: %d\n B: %d\n C: %d\n D: %d\n E: %d\n  H: %d\n L: %d\n", cpu.regs.a, cpu.regs.b, cpu.regs.c, cpu.regs.d, cpu.regs.e, cpu.regs.h, cpu.regs.l)
+	fmt.Printf(" A: %d\n B: %d\n C: %d\n D: %d\n E: %d\n H: %d\n L: %d\n", cpu.regs.a, cpu.regs.b, cpu.regs.c, cpu.regs.d, cpu.regs.e, cpu.regs.h, cpu.regs.l)
 	fmt.Printf(" SP: %02x\n PC: %02x \n", cpu.sp, cpu.pc)
 	fmt.Printf(" flags: sign - %d, zero - %d, aux carry - %d, parity - %d, carry - %d  \n", cpu.flags.s, cpu.flags.z, cpu.flags.ac, cpu.flags.p, cpu.flags.cy)
 	fmt.Println("=========================================================================")

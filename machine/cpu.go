@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
+	"time"
 )
 
 type Cpu struct {
@@ -233,8 +234,18 @@ func (cpu *Cpu) executeInstruction() uint8 {
 
 func (cpu *Cpu) Step() {
 	cpu.currentOp = getOpcode(&cpu.memory[cpu.pc])
+	timeToProcess := time.Duration(cpu.currentOp.Cycles) * (500 * time.Nanosecond)
+	startTime := time.Now()
+
 	n := cpu.executeInstruction()
 	cpu.pc += uint16(n)
+	fmt.Println("PC", cpu.pc)
+
+	elapsed := time.Since(startTime)
+
+	if elapsed < timeToProcess {
+		time.Sleep(timeToProcess - elapsed)
+	}
 }
 
 func getOpcode(code *byte) *decoder.Opcode {
