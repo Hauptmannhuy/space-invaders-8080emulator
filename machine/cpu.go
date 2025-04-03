@@ -16,7 +16,10 @@ type Cpu struct {
 	sp               uint16 // stack pointer
 	pc               uint16 //  program counter
 	interruptEnabled bool
+	LastInterrupt    time.Time
+	IO_handler       IO_handler
 	currentOp        *decoder.Opcode
+	Ports            Ports
 }
 
 func InitCpu() *Cpu {
@@ -24,6 +27,7 @@ func InitCpu() *Cpu {
 		memory: &Memory{},
 		regs:   &registers{},
 		flags:  &flags{},
+		Ports:  Ports{},
 	}
 	return cpu
 }
@@ -43,6 +47,18 @@ func (cpu *Cpu) ResetCpu() {
 	cpu.pc = 0
 	cpu.sp = 0
 	cpu.memory = &Memory{}
+}
+
+func (cpu *Cpu) GetCurrentOP() *decoder.Opcode {
+	return cpu.currentOp
+}
+
+func (cpu *Cpu) GetPC() uint16 {
+	return cpu.pc
+}
+
+func (cpu *Cpu) GetMemAddr(addr uint16) uint8 {
+	return cpu.memory.read(addr)
 }
 
 func (cpu *Cpu) executeInstruction() uint8 {
@@ -205,8 +221,6 @@ func (cpu *Cpu) executeInstruction() uint8 {
 		return cpu.sphl()
 	case decoder.OUT:
 		return cpu.out()
-	case decoder.IN:
-		return cpu.in()
 	case decoder.DI:
 		return cpu.di()
 	case decoder.EI:
@@ -215,6 +229,8 @@ func (cpu *Cpu) executeInstruction() uint8 {
 		return cpu.hlt()
 	case decoder.NOP:
 		return cpu.nop()
+	case decoder.IN:
+		return cpu.in()
 
 	case decoder.RIM:
 		return cpu.rim()
@@ -232,6 +248,10 @@ func (cpu *Cpu) executeInstruction() uint8 {
 	}
 }
 
+func (cpu *Cpu) GenerateInterrupt() {
+
+}
+
 func (cpu *Cpu) Step() {
 	cpu.currentOp = getOpcode(&cpu.memory[cpu.pc])
 	timeToProcess := time.Duration(cpu.currentOp.Cycles) * (500 * time.Nanosecond)
@@ -239,7 +259,6 @@ func (cpu *Cpu) Step() {
 
 	n := cpu.executeInstruction()
 	cpu.pc += uint16(n)
-	fmt.Println("PC", cpu.pc)
 
 	elapsed := time.Since(startTime)
 
@@ -791,6 +810,9 @@ func (cpu *Cpu) rst() uint8 {
 }
 
 func (cpu *Cpu) in() uint8 {
+	val := cpu.IO_handler.InPort(cpu)
+	cpu.updateReg(A_REG, val)
+	fmt.Println("IN()")
 	return 2
 }
 
@@ -799,6 +821,7 @@ func (cpu *Cpu) out() uint8 {
 }
 
 func (cpu *Cpu) ei() uint8 {
+	os.Exit(1)
 	cpu.interruptEnabled = true
 	return 1
 }
