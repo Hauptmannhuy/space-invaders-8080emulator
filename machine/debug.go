@@ -36,6 +36,7 @@ func (rmp *remoteProceeder) next() {
 
 func (defp defaultProceeder) next() {
 	// time.Sleep(500 * time.Millisecond)
+	// getInput()
 }
 
 func (dbg debugger) Debug(cpu *Cpu) {

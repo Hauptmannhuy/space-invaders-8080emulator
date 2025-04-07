@@ -2,7 +2,7 @@ package main
 
 import (
 	"cpu-emulator/machine"
-	spaceinvaders "cpu-emulator/space-invaders"
+	spacegameMachine "cpu-emulator/space-invaders"
 	"flag"
 	"fmt"
 	"os"
@@ -34,9 +34,9 @@ func main() {
 	// dbg.Debug(cpu)
 
 	cpu := machine.InitCpu()
-	buff, _ := os.ReadFile("./roms/space-invaders.rom")
+	buff, _ := os.ReadFile("./roms/invaders.rom")
 	cpu.LoadRom(buff)
-	spaceinvaders.Start(cpu)
+	spacegameMachine.Start(cpu)
 }
 
 func setFlags() {

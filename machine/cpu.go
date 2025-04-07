@@ -10,16 +10,21 @@ import (
 )
 
 type Cpu struct {
-	memory           *Memory
-	regs             *registers
-	flags            *flags
-	sp               uint16 // stack pointer
-	pc               uint16 //  program counter
-	interruptEnabled bool
-	LastInterrupt    time.Time
+	currentOp *decoder.Opcode
+	memory    *Memory
+
+	regs  *registers
+	flags *flags
+
+	sp uint16 // stack pointer
+	pc uint16 //  program counter
+
 	IO_handler       IO_handler
-	currentOp        *decoder.Opcode
 	Ports            Ports
+	InterruptEnabled bool
+
+	LastRun  time.Time
+	CycleRun time.Duration
 }
 
 func InitCpu() *Cpu {
@@ -248,23 +253,37 @@ func (cpu *Cpu) executeInstruction() uint8 {
 	}
 }
 
-func (cpu *Cpu) GenerateInterrupt() {
+func (cpu *Cpu) GenerateInterrupt(interruptNum int) {
+	//perform "PUSH PC"
+	if cpu.sp == 0 {
+		return
+	}
+	msb := uint8((cpu.pc & 0xFF00) >> 8)
+	lsb := uint8(cpu.pc)
+	cpu.memory.write(cpu.sp-1, msb)
+	cpu.memory.write(cpu.sp-2, lsb)
+	cpu.sp -= 2
+	//Set the PC to the low memory vector.
+	//This is identical to an "RST interrupt_num" instruction.
+	cpu.pc = uint16(8 * interruptNum)
 
+	cpu.di()
 }
 
 func (cpu *Cpu) Step() {
+	disassebmle(cpu)
+	// if cpu.pc == 0x8 {
+	// 	fmt.Println("RST 1")
+	// } else if cpu.pc == 0x10 {
+	// 	fmt.Println("RST 2")
+	// } else if cpu.pc == 0x87 {
+	// 	fmt.Println("Leaving RST")
+	// }
 	cpu.currentOp = getOpcode(&cpu.memory[cpu.pc])
-	timeToProcess := time.Duration(cpu.currentOp.Cycles) * (500 * time.Nanosecond)
-	startTime := time.Now()
-
 	n := cpu.executeInstruction()
+	cpu.CycleRun = time.Duration(cpu.currentOp.Cycles) * 500 * time.Nanosecond
 	cpu.pc += uint16(n)
 
-	elapsed := time.Since(startTime)
-
-	if elapsed < timeToProcess {
-		time.Sleep(timeToProcess - elapsed)
-	}
 }
 
 func getOpcode(code *byte) *decoder.Opcode {
@@ -812,22 +831,22 @@ func (cpu *Cpu) rst() uint8 {
 func (cpu *Cpu) in() uint8 {
 	val := cpu.IO_handler.InPort(cpu)
 	cpu.updateReg(A_REG, val)
-	fmt.Println("IN()")
+	fmt.Println("in")
 	return 2
 }
 
 func (cpu *Cpu) out() uint8 {
+	fmt.Println("out")
 	return 2
 }
 
 func (cpu *Cpu) ei() uint8 {
-	os.Exit(1)
-	cpu.interruptEnabled = true
+	cpu.InterruptEnabled = true
 	return 1
 }
 
 func (cpu *Cpu) di() uint8 {
-	cpu.interruptEnabled = false
+	cpu.InterruptEnabled = false
 	return 1
 }
 

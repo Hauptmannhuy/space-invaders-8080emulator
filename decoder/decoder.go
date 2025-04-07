@@ -335,7 +335,7 @@ func GetInstruction(memory *byte) *Opcode {
 		} else if code >= 0x03 && code <= 0x33 && code&0xF == 0x3 {
 			name = fmt.Sprintf("INX %s", misc.RegPairToString(highNibble))
 			instruction = INX
-
+			cycles = 2
 		} else if code >= 0x04 && code <= 0x3c && (code&0xF == 0x4 || code&0xf == 0xc) {
 			name = fmt.Sprintf("INR %s", misc.RegToString(code>>3))
 			instruction = INR
@@ -369,7 +369,7 @@ func GetInstruction(memory *byte) *Opcode {
 			} else {
 				cycles = 1
 			}
-
+			cycles = 3
 		} else if code >= 0x80 && code <= 0x87 {
 
 			name = fmt.Sprintf("ADD %s", misc.RegToString(lowNibble))
