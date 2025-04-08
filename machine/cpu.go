@@ -253,10 +253,10 @@ func (cpu *Cpu) executeInstruction() uint8 {
 	}
 }
 
-func (cpu *Cpu) GenerateInterrupt(interruptNum int) {
+func (cpu *Cpu) GenerateInterrupt(interruptNum int) error {
 	//perform "PUSH PC"
-	if cpu.sp == 0 {
-		return
+	if cpu.sp <= 0 {
+		return fmt.Errorf("sp <= 0")
 	}
 	msb := uint8((cpu.pc & 0xFF00) >> 8)
 	lsb := uint8(cpu.pc)
@@ -268,22 +268,23 @@ func (cpu *Cpu) GenerateInterrupt(interruptNum int) {
 	cpu.pc = uint16(8 * interruptNum)
 
 	cpu.di()
+	return nil
 }
 
 func (cpu *Cpu) Step() {
+	if cpu.pc == 0x8 {
+		fmt.Println("RST 1")
+	} else if cpu.pc == 0x10 {
+		fmt.Println("RST 2")
+	} else if cpu.pc == 0x87 {
+		fmt.Println("Leaving RST")
+	}
 	disassebmle(cpu)
-	// if cpu.pc == 0x8 {
-	// 	fmt.Println("RST 1")
-	// } else if cpu.pc == 0x10 {
-	// 	fmt.Println("RST 2")
-	// } else if cpu.pc == 0x87 {
-	// 	fmt.Println("Leaving RST")
-	// }
+
 	cpu.currentOp = getOpcode(&cpu.memory[cpu.pc])
 	n := cpu.executeInstruction()
 	cpu.CycleRun = time.Duration(cpu.currentOp.Cycles) * 500 * time.Nanosecond
 	cpu.pc += uint16(n)
-
 }
 
 func getOpcode(code *byte) *decoder.Opcode {

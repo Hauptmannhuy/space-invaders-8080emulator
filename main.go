@@ -5,54 +5,62 @@ import (
 	spacegameMachine "cpu-emulator/space-invaders"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 )
 
 const defaultPath string = "./roms/space-invaders.rom"
 
 func main() {
-	// setFlags()
-
-	// args := os.Args[1:]
-	// flag := os.Args[3]
-	// cpu := machine.InitCpu()
-	// buff, err := os.ReadFile(args[1])
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-	// cpu.LoadRom(buff)
-
-	// if flag == "-rd" || flag == "-d" {
-	// 	dbg := machine.InitDebugger(flag)
-	// 	dbg.Debug(cpu)
-	// }
-
-	// cpu := machine.InitCpu()
-	// buff, _ := os.ReadFile("./roms/space-invaders.rom")
-	// cpu.LoadRom(buff)
-	// dbg := machine.InitDebugger("-d")
-	// dbg.Debug(cpu)
-
+	setFlags()
+	var buffer []byte
 	cpu := machine.InitCpu()
-	buff, _ := os.ReadFile("./roms/invaders.rom")
-	cpu.LoadRom(buff)
-	spacegameMachine.Start(cpu)
+
+	args := os.Args[1:]
+
+	if len(args) > 1 {
+		flag := os.Args[3]
+		fileBuffer, err := os.ReadFile(args[1])
+		buffer = fileBuffer
+		if err != nil {
+			log.Panic(err)
+		}
+
+		if flag == "-rd" || flag == "-d" {
+			dbg := machine.InitDebugger(flag)
+			dbg.Debug(cpu)
+			return
+		}
+
+	} else {
+		fileBuffer, err := os.ReadFile(defaultPath)
+		if err != nil {
+			log.Panic(err)
+		}
+		buffer = fileBuffer
+	}
+
+	cpu.LoadRom(buffer)
+
+	spacegameMachine.Main(cpu)
 }
 
 func setFlags() {
-	rFlag := flag.String("r", "", "Path to the ROM file")
+	usageText := "Usage: go run . -r <path> (-rd | -r)"
+
+	rFlag := flag.String("r", "", "path to the ROM file")
 	drFlag := flag.Bool("rd", true, "debug with remote debugger")
 	dFlag := flag.Bool("d", true, "default debug")
-
+	pFlag := flag.Bool("p", true, "play space invaders")
 	flag.Parse()
 
-	if *rFlag == "" {
-		fmt.Println("Usage: go run . -r <path>")
-		os.Exit(1)
-	}
-
-	if !*drFlag && !*dFlag {
-		fmt.Println("Usage: go run . -r <path> (-rd | -r)")
-		os.Exit(1)
+	if *pFlag {
+		if *rFlag != "" {
+			fmt.Println(usageText)
+			os.Exit(1)
+		} else if !*drFlag && !*dFlag {
+			fmt.Println(usageText)
+			os.Exit(1)
+		}
 	}
 }
