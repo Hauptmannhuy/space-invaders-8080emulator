@@ -4,8 +4,6 @@ import (
 	"cpu-emulator/machine"
 	"fmt"
 	"log"
-	"os"
-	"time"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -20,8 +18,8 @@ const (
 )
 
 const (
-	RGB_ON  uint32 = 0xFFFFFFFF // Белый
-	RGB_OFF uint32 = 0x000000FF // Чёрный (A=255, но R=G=B=0)
+	RGB_ON  uint32 = 0xFFFFFFFF
+	RGB_OFF uint32 = 0x000000FF
 )
 const (
 	width  = 224
@@ -31,9 +29,11 @@ const (
 type spaceInvadersMachine struct {
 	cpu *machine.Cpu
 
-	timer          time.Time
-	lastInterrupt  time.Time
-	whichInterrupt int
+	returned bool
+
+	CyclesRan          uint64
+	lastInterruptCycle uint64
+	whichInterrupt     int
 }
 
 type gameIO struct {
@@ -88,7 +88,6 @@ func loop(window *sdl.Window, texture *sdl.Texture, gameMachine *spaceInvadersMa
 		}
 
 		renderer.Clear()
-		gameMachine.cpu.Step()
 		updateTexture(texture, gameMachine)
 		gameMachine.internalUpdate()
 		renderer.Copy(texture, nil, nil)
@@ -103,26 +102,32 @@ func initEmulation(cpu *machine.Cpu) *spaceInvadersMachine {
 		whichInterrupt: 1,
 	}
 	cpu.InterruptEnabled = true
+	gameMachine.returned = true
 	cpu.IO_handler = &gameIO{}
 	return gameMachine
 }
 
 func (gameMachine *spaceInvadersMachine) internalUpdate() {
+	gameMachine.cpu.Step()
+	op := gameMachine.cpu.GetCurrentOP()
+	cycles := op.Cycles
 
-	if gameMachine.lastInterrupt.IsZero() {
-		gameMachine.lastInterrupt = time.Now()
-		gameMachine.timer = time.Now()
+	if !gameMachine.returned && op.Code == 0xc9 {
+		gameMachine.returned = true
 	}
 
-	if gameMachine.timer.Sub(gameMachine.lastInterrupt) >= time.Second/60 {
-		if gameMachine.cpu.InterruptEnabled {
+	// fmt.Println("cycles count", gameMachine.CyclesRan)
+	if gameMachine.CyclesRan-gameMachine.lastInterruptCycle > 33 {
+		if gameMachine.cpu.InterruptEnabled && gameMachine.returned {
+
 			err := gameMachine.cpu.GenerateInterrupt(gameMachine.whichInterrupt)
 			if err != nil {
-				time.Sleep(gameMachine.cpu.CycleRun)
+				// time.Sleep(gameMachine.cpu.CycleDuration)
 				return
 			}
 			fmt.Println("interrupt")
-			gameMachine.lastInterrupt = time.Now()
+			gameMachine.returned = false
+			gameMachine.lastInterruptCycle = gameMachine.CyclesRan
 			if gameMachine.whichInterrupt == 1 {
 				gameMachine.whichInterrupt = 2
 			} else {
@@ -130,7 +135,7 @@ func (gameMachine *spaceInvadersMachine) internalUpdate() {
 			}
 		}
 	}
-	gameMachine.timer = time.Now()
+	gameMachine.CyclesRan += uint64(cycles)
 }
 
 func updateTexture(texture *sdl.Texture, gameMachine *spaceInvadersMachine) {
@@ -139,12 +144,11 @@ func updateTexture(texture *sdl.Texture, gameMachine *spaceInvadersMachine) {
 	for x := 0; x < 224; x++ {
 		for y := 0; y < 256; y += 8 {
 			p := buffer[(x*(256/8))+y/8]
-			offset := y*(224*4) + x*4 // Начинаем сверху
+			offset := y*(224*4) + x*4
 
 			ptr := (*uint32)(unsafe.Pointer(&bitmap[offset]))
 			for i := 0; i < 8; i++ {
 				if p&0x1 == 1 {
-					os.Exit(2)
 					*ptr = RGB_ON
 				} else {
 					*ptr = RGB_OFF
@@ -163,6 +167,7 @@ func updateTexture(texture *sdl.Texture, gameMachine *spaceInvadersMachine) {
 }
 
 func (gIO *gameIO) InPort(cpu *machine.Cpu) uint8 {
+
 	shift0 := gIO.shift0
 	shift1 := gIO.shift1
 	shiftOffset := gIO.shiftOffset
@@ -177,21 +182,22 @@ func (gIO *gameIO) InPort(cpu *machine.Cpu) uint8 {
 	case 2:
 
 	case 3:
-		v := (uint16((shift1<<8)|shift0) >> (8 - uint16(shiftOffset)) & 0xff)
-		accum = uint8(v)
+		v := (uint16(shift1) << 8) | uint16(shift0)
+		accum = uint8((v >> (8 - shiftOffset)) & 0xff)
 	}
 	return accum
 }
 
 func (gIO *gameIO) OutPort(cpu *machine.Cpu) {
+
 	port := cpu.Ports[cpu.GetMemoryAt(cpu.GetPC()+1)]
-	val := cpu.Ports[port]
+	accum := cpu.GetAccumulator()
 	switch port {
 	case 2:
-		gIO.shiftOffset = val & 0x7
+		gIO.shiftOffset = accum & 0x7
 	case 4:
 		gIO.shift0 = gIO.shift1
-		gIO.shift1 = val
+		gIO.shift1 = accum
 	}
 }
 

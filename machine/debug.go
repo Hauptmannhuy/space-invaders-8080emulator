@@ -114,7 +114,7 @@ func connRemoteDbg() net.Conn {
 
 func disassebmle(cpuState *Cpu) {
 	pc := cpuState.pc
-	opcode := getOpcode(&cpuState.memory[pc])
+	opcode := getOpcode(*cpuState.memory, pc)
 	fmt.Printf("PC: 0x%02x\n", pc)
 	fmt.Printf("SP: 0x%02x\n", cpuState.sp)
 	fmt.Printf("Instruction: %s ", opcode.Name)

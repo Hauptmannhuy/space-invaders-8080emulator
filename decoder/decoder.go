@@ -112,14 +112,14 @@ const (
 
 const BDOS = 0x05
 
-func GetInstruction(memory *byte) *Opcode {
+func GetInstruction(memory []byte, pc uint16) *Opcode {
 	var instruction uint8
 	var name string
 	var cycles uint8
 
-	lowNibble := *memory & 0x0f
-	highNibble := (*memory & 0xf0) >> 4
-	code := *memory
+	code := memory[pc]
+	lowNibble := code & 0x0f
+	highNibble := (code & 0xf0) >> 4
 
 	switch code {
 	case 0x00:
@@ -148,7 +148,7 @@ func GetInstruction(memory *byte) *Opcode {
 		cycles = 1
 	case 0x22:
 		instruction = SHLD
-		name = fmt.Sprintf("SHLD 0x%x", misc.Make16bit(*memory+2, *memory+1))
+		name = fmt.Sprintf("SHLD 0x%x", misc.Make16bit(memory[pc+2], memory[pc+1]))
 		cycles = 5
 	case 0x27:
 		instruction = DAA
@@ -156,7 +156,7 @@ func GetInstruction(memory *byte) *Opcode {
 		cycles = 1
 	case 0x2a:
 		instruction = LHLD
-		name = fmt.Sprintf("LHLD 0x%x", misc.Make16bit(*memory+2, *memory+1))
+		name = fmt.Sprintf("LHLD 0x%x", misc.Make16bit(memory[pc+2], memory[pc+1]))
 		cycles = 5
 	case 0x2f:
 		instruction = CMA
@@ -168,7 +168,7 @@ func GetInstruction(memory *byte) *Opcode {
 		cycles = 0
 	case 0x32:
 		instruction = STA
-		name = fmt.Sprintf("STA 0x%x", misc.Make16bit(*memory+2, *memory+1))
+		name = fmt.Sprintf("STA 0x%x", misc.Make16bit(memory[pc+2], memory[pc+1]))
 		cycles = 4
 	case 0x37:
 		instruction = STC
@@ -176,7 +176,7 @@ func GetInstruction(memory *byte) *Opcode {
 		cycles = 1
 	case 0x3a:
 		instruction = LDA
-		name = fmt.Sprintf("LDA 0x%x", misc.Make16bit(*memory+2, *memory+1))
+		name = fmt.Sprintf("LDA 0x%x", misc.Make16bit(memory[pc+2], memory[pc+1]))
 		cycles = 4
 	case 0x3f:
 		instruction = CMC
@@ -216,7 +216,7 @@ func GetInstruction(memory *byte) *Opcode {
 		cycles = 3
 	case 0xcd:
 		instruction = CALL
-		name = fmt.Sprintf("CALL 0x%x", misc.Make16bit(*memory+2, *memory+1))
+		name = fmt.Sprintf("CALL 0x%x", misc.Make16bit(memory[pc+2], memory[pc+1]))
 		cycles = 5
 	case 0xd0:
 		instruction = RNC
@@ -326,11 +326,11 @@ func GetInstruction(memory *byte) *Opcode {
 
 		if code >= 0x01 && code <= 0x31 && code&0xF == 0x1 {
 			instruction = LXI
-			name = fmt.Sprintf("LXI %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(*memory+2, *memory+1))
+			name = fmt.Sprintf("LXI %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(memory[pc+2], memory[pc+1]))
 			cycles = 3
 		} else if code >= 0x02 && code <= 0x12 && code&0xF == 0x2 {
 			instruction = STAX
-			name = fmt.Sprintf("STAX %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(*memory+2, *memory+1))
+			name = fmt.Sprintf("STAX %s, 0x%x", misc.RegPairToString(highNibble), misc.Make16bit(memory[pc+2], memory[pc+1]))
 			cycles = 2
 		} else if code >= 0x03 && code <= 0x33 && code&0xF == 0x3 {
 			name = fmt.Sprintf("INX %s", misc.RegPairToString(highNibble))
@@ -346,7 +346,7 @@ func GetInstruction(memory *byte) *Opcode {
 			instruction = DCR
 			cycles = 1
 		} else if code >= 0x06 && code <= 0x3e && (code&0xf == 0x6 || code&0xf == 0xe) {
-			name = fmt.Sprintf("MVI %s 0x%x", misc.RegToString(code>>3), *memory+1)
+			name = fmt.Sprintf("MVI %s 0x%x", misc.RegToString(code>>3), memory[pc+1])
 			instruction = MVI
 		} else if code >= 0x09 && code <= 0x39 && code&0xf == 0x9 {
 			name = fmt.Sprintf("DAD %s", misc.RegPairToString(highNibble))
@@ -455,7 +455,7 @@ func GetInstruction(memory *byte) *Opcode {
 				0xee: "XRI", 0xf6: "ORI", 0xfe: "CPI",
 			}
 			cycles = 2
-			name = fmt.Sprintf("%s 0x%0x", names[code], *memory+1)
+			name = fmt.Sprintf("%s 0x%0x", names[code], memory[pc+1])
 			instruction = instructs[code]
 		} else if code >= 0xc7 && code <= 0xff && (code&0xf == 0x7 || code&0xf == 0xf) {
 			name = "RST"

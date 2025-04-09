@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
-	"time"
 )
 
 type Cpu struct {
@@ -19,12 +18,10 @@ type Cpu struct {
 	sp uint16 // stack pointer
 	pc uint16 //  program counter
 
-	IO_handler       IO_handler
-	Ports            Ports
-	InterruptEnabled bool
+	IO_handler IO_handler
+	Ports      Ports
 
-	LastRun  time.Time
-	CycleRun time.Duration
+	InterruptEnabled bool
 }
 
 func InitCpu() *Cpu {
@@ -255,7 +252,7 @@ func (cpu *Cpu) executeInstruction() uint8 {
 
 func (cpu *Cpu) GenerateInterrupt(interruptNum int) error {
 	//perform "PUSH PC"
-	if cpu.sp <= 0 {
+	if cpu.sp <= 2400 {
 		return fmt.Errorf("sp <= 0")
 	}
 	msb := uint8((cpu.pc & 0xFF00) >> 8)
@@ -279,16 +276,19 @@ func (cpu *Cpu) Step() {
 	} else if cpu.pc == 0x87 {
 		fmt.Println("Leaving RST")
 	}
-	disassebmle(cpu)
-
-	cpu.currentOp = getOpcode(&cpu.memory[cpu.pc])
+	// disassebmle(cpu)
+	// debugCpuState(cpu)
+	cpu.currentOp = getOpcode(*cpu.memory, cpu.pc)
 	n := cpu.executeInstruction()
-	cpu.CycleRun = time.Duration(cpu.currentOp.Cycles) * 500 * time.Nanosecond
 	cpu.pc += uint16(n)
 }
 
-func getOpcode(code *byte) *decoder.Opcode {
-	return decoder.GetInstruction(code)
+func (cpu *Cpu) GetAccumulator() uint8 {
+	return cpu.regs.a
+}
+
+func getOpcode(memory Memory, pc uint16) *decoder.Opcode {
+	return decoder.GetInstruction(memory[:], pc)
 }
 
 func (cpu *Cpu) nop() uint8 {
@@ -737,6 +737,7 @@ func (cpu *Cpu) jmp() uint8 {
 }
 
 func (cpu *Cpu) ret() uint8 {
+
 	if cpu.currentOp.Condition == 0 || cpu.checkConditionFlag() {
 		var addr uint16
 
@@ -830,14 +831,16 @@ func (cpu *Cpu) rst() uint8 {
 }
 
 func (cpu *Cpu) in() uint8 {
+	// fmt.Println("in")
+	// fmt.Println(cpu.pc)
+	// fmt.Println(cpu.memory.read(cpu.pc + 1))
 	val := cpu.IO_handler.InPort(cpu)
 	cpu.updateReg(A_REG, val)
-	fmt.Println("in")
 	return 2
 }
 
 func (cpu *Cpu) out() uint8 {
-	fmt.Println("out")
+	cpu.IO_handler.OutPort(cpu)
 	return 2
 }
 
