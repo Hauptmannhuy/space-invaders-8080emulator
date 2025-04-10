@@ -42,6 +42,6 @@ func (cpu *Cpu) GetMemoryAt(offset uint16) uint8 {
 
 func (cpu *Cpu) CopyFrameBuffer() []byte {
 	buffer := make([]byte, 7168)
-	copy(cpu.memory[VRAMStart:VRAMEnd], buffer)
+	copy(buffer, cpu.memory[VRAMStart:VRAMEnd])
 	return buffer
 }

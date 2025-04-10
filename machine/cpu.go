@@ -269,13 +269,13 @@ func (cpu *Cpu) GenerateInterrupt(interruptNum int) error {
 }
 
 func (cpu *Cpu) Step() {
-	if cpu.pc == 0x8 {
-		fmt.Println("RST 1")
-	} else if cpu.pc == 0x10 {
-		fmt.Println("RST 2")
-	} else if cpu.pc == 0x87 {
-		fmt.Println("Leaving RST")
-	}
+	// if cpu.pc == 0x8 {
+	// 	fmt.Println("RST 1")
+	// } else if cpu.pc == 0x10 {
+	// 	fmt.Println("RST 2")
+	// } else if cpu.pc == 0x87 {
+	// 	fmt.Println("Leaving RST")
+	// }
 	// disassebmle(cpu)
 	// debugCpuState(cpu)
 	cpu.currentOp = getOpcode(*cpu.memory, cpu.pc)
@@ -836,6 +836,7 @@ func (cpu *Cpu) in() uint8 {
 	// fmt.Println(cpu.memory.read(cpu.pc + 1))
 	val := cpu.IO_handler.InPort(cpu)
 	cpu.updateReg(A_REG, val)
+	// fmt.Println("updating IN", val)
 	return 2
 }
 
