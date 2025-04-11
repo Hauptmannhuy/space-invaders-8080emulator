@@ -31,6 +31,8 @@ func InitCpu() *Cpu {
 		flags:  &flags{},
 		Ports:  Ports{},
 	}
+	cpu.Ports[0] = 0b00001110
+	cpu.Ports[1] = 0x8
 	return cpu
 }
 
@@ -250,22 +252,20 @@ func (cpu *Cpu) executeInstruction() uint8 {
 	}
 }
 
-func (cpu *Cpu) GenerateInterrupt(interruptNum int) error {
+func (cpu *Cpu) GenerateInterrupt(interruptNum int) {
 	//perform "PUSH PC"
-	if cpu.sp <= 2400 {
-		return fmt.Errorf("sp <= 0")
-	}
+	// if cpu.sp <= 0x2000 {
+	// 	return fmt.Errorf("sp is too low")
+	// }
 	msb := uint8((cpu.pc & 0xFF00) >> 8)
 	lsb := uint8(cpu.pc)
 	cpu.memory.write(cpu.sp-1, msb)
 	cpu.memory.write(cpu.sp-2, lsb)
 	cpu.sp -= 2
-	//Set the PC to the low memory vector.
-	//This is identical to an "RST interrupt_num" instruction.
+
 	cpu.pc = uint16(8 * interruptNum)
 
 	cpu.di()
-	return nil
 }
 
 func (cpu *Cpu) Step() {
