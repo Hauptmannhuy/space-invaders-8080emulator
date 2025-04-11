@@ -831,12 +831,8 @@ func (cpu *Cpu) rst() uint8 {
 }
 
 func (cpu *Cpu) in() uint8 {
-	// fmt.Println("in")
-	// fmt.Println(cpu.pc)
-	// fmt.Println(cpu.memory.read(cpu.pc + 1))
 	val := cpu.IO_handler.InPort(cpu)
 	cpu.updateReg(A_REG, val)
-	// fmt.Println("updating IN", val)
 	return 2
 }
 

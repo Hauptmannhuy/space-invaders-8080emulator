@@ -31,7 +31,7 @@ type spaceInvadersMachine struct {
 
 	bitmap []byte
 
-	CyclesRan          uint64
+	cyclesRan          uint64
 	lastInterruptCycle uint64
 	whichInterrupt     int
 }
@@ -112,7 +112,7 @@ func (gameMachine *spaceInvadersMachine) internalUpdate() {
 	// go func(gm *spaceInvadersMachine) {
 	// 	for {
 	// 		<-ticker.C
-	// 		fmt.Println("cycles run", gameMachine.CyclesRan)
+	// 		fmt.Println("cycles run", gameMachine.cyclesRan)
 	// 		fmt.Println("elapsed 1 second")
 	// 		ticker.Reset(time.Second)
 
@@ -124,22 +124,18 @@ func (gameMachine *spaceInvadersMachine) internalUpdate() {
 		op := gameMachine.cpu.GetCurrentOP()
 		cycles := op.Cycles
 
-		if gameMachine.CyclesRan-gameMachine.lastInterruptCycle > 33_333 {
+		if gameMachine.cyclesRan-gameMachine.lastInterruptCycle > 33_333 {
 			if gameMachine.cpu.InterruptEnabled {
 
 				gameMachine.cpu.GenerateInterrupt(gameMachine.whichInterrupt)
 
 				// fmt.Println("interrupt")
-				gameMachine.lastInterruptCycle = gameMachine.CyclesRan
-				if gameMachine.whichInterrupt == 1 {
-					gameMachine.whichInterrupt = 2
-				} else {
-					gameMachine.whichInterrupt = 1
-				}
+				gameMachine.lastInterruptCycle = gameMachine.cyclesRan
+				gameMachine.whichInterrupt ^= 3
 			}
 		}
 
-		gameMachine.CyclesRan += uint64(cycles)
+		gameMachine.cyclesRan += uint64(cycles)
 	}
 
 }
@@ -176,11 +172,11 @@ func updateTexture(texture *sdl.Texture, gameMachine *spaceInvadersMachine) {
 	texture.Unlock()
 }
 
-func (gIO *gameIO) InPort(cpu *machine.Cpu) uint8 {
+func (io *gameIO) InPort(cpu *machine.Cpu) uint8 {
 
-	shift0 := gIO.shift0
-	shift1 := gIO.shift1
-	shiftOffset := gIO.shiftOffset
+	shift0 := io.shift0
+	shift1 := io.shift1
+	shiftOffset := io.shiftOffset
 	var accum uint8
 	pc := cpu.GetPC()
 	port := cpu.GetMemoryAt(pc + 1)
@@ -191,8 +187,6 @@ func (gIO *gameIO) InPort(cpu *machine.Cpu) uint8 {
 		return 1
 	case 1:
 		accum = portVal
-	case 2:
-
 	case 3:
 		v := (uint16(shift1) << 8) | uint16(shift0)
 		accum = uint8((v >> (8 - shiftOffset)) & 0xff)
@@ -200,57 +194,63 @@ func (gIO *gameIO) InPort(cpu *machine.Cpu) uint8 {
 	return accum
 }
 
-func (gIO *gameIO) OutPort(cpu *machine.Cpu) {
+func (io *gameIO) OutPort(cpu *machine.Cpu) {
 
 	port := cpu.GetMemoryAt(cpu.GetPC() + 1)
 	accum := cpu.GetAccumulator()
 	switch port {
 	case 2:
-		gIO.shiftOffset = accum & 0x7
+		io.shiftOffset = accum & 0x7
 	case 4:
-		gIO.shift0 = gIO.shift1
-		gIO.shift1 = accum
+		io.shift0 = io.shift1
+		io.shift1 = accum
 	}
 }
 
-func (gameMachine *spaceInvadersMachine) machineKeyPressed(input sdl.Keycode) {
-	ports := &gameMachine.cpu.Ports
+func getSetBit(input sdl.Keycode) uint8 {
 	switch input {
 	case fire:
-		ports[1] |= 0x10
+		return 0x10
 	case left:
-		ports[1] |= 0x20
+		return 0x20
 	case right:
-		ports[1] |= 0x40
+		return 0x40
 	case insertCoin:
-		ports[1] |= 0x01
+		return 0x01
 	case start:
-		ports[1] |= 0x04
+		return 0x04
+	default:
+		fmt.Println("Unknown input")
+		return 0
 	}
 }
 
-func (gameMachine *spaceInvadersMachine) machineKeyReleased(input sdl.Keycode) {
-	ports := &gameMachine.cpu.Ports
+func getClearBit(input sdl.Keycode) uint8 {
 	switch input {
 	case fire:
-		ports[1] &= 0xef
+		return 0xef
 	case left:
-		ports[1] &= 0xdf
+		return 0xdf
 	case right:
-		ports[1] &= 0xbf
+		return 0xbf
 	case insertCoin:
-		ports[1] &= 0
+		return 0
 	case start:
-		ports[1] &= 0xfb
-
+		return 0xfb
+	default:
+		fmt.Println("Unknown input")
+		return 0
 	}
 }
 
 func (gameMachine *spaceInvadersMachine) handleKey(ev *sdl.KeyboardEvent) {
+	var result uint8
+	port := &gameMachine.cpu.Ports[1]
+
 	if ev.State == sdl.PRESSED {
-		gameMachine.machineKeyPressed(ev.Keysym.Sym)
+		result = *port | getSetBit(ev.Keysym.Sym)
 	} else {
-		gameMachine.machineKeyReleased(ev.Keysym.Sym)
+		result = *port & getClearBit(ev.Keysym.Sym)
 	}
-	fmt.Println(gameMachine.cpu.Ports)
+	*port = result
 }
