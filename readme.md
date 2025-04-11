@@ -1,16 +1,11 @@
 
 # Intel 8080 Emulator and Space Invaders arcade implementation
 
-In this project i'm trying to emulate i8080 cpu and also based on cpu implementation make something more impressive than executing instructions, for example, make ancient space invaders code written in assembly running.
-
-
-
-
-
+This project is trying to emulate i8080 cpu and also based on cpu implementation make something more impressive than executing instructions, for example, make ancient space invaders code written in assembly running.
 
 ## Requirements
 
-[Go v1.13+](https://go.dev/dl/)\
+[Go v1.13+](https://go.dev/dl/)
 [Go SDL](https://github.com/veandco/go-sdl2?tab=readme-ov-file#requirements)
 
 
@@ -24,7 +19,7 @@ In this project i'm trying to emulate i8080 cpu and also based on cpu implementa
 
 You can either play the game or use debugger. 
 
-To run debugger you how to specify path and exactly debugger flag.
+To run debugger you have to specify path and debugger flag.
 
 To run the game you have to simply specify -p flag
 ####  run emulator
@@ -35,7 +30,6 @@ To run the game you have to simply specify -p flag
 
 | Flag             | Description|
 | ----------------- | ------------------------------------------------------------------ |
-| 
 | -p | run space invaders |
 | -r  | path to ROM |
 | -d | run debugger |
@@ -49,11 +43,10 @@ To run debugger type in terminal
 # Key bindings
 | Key             | Action description|
 | ----------------- | ------------------------------------------------------------------ |
-| 
 | A | run space invaders |
 | D  | path to ROM |
 | Space | run debugger |
-| W| Start
+| W| Start|
 |S | Insert coin|
 
 
