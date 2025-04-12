@@ -47,9 +47,9 @@ To run debugger type in terminal
 # Key bindings
 | Key             | Action description|
 | ----------------- | ------------------------------------------------------------------ |
-| A | run space invaders |
-| D  | path to ROM |
-| Space | run debugger |
+| A | move left |
+| D  | move right |
+| Space | shoot |
 | W| Start|
 |S | Insert coin|
 
