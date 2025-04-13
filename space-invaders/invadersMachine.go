@@ -4,6 +4,7 @@ import (
 	"cpu-emulator/machine"
 	"fmt"
 	"log"
+	"sync"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -34,6 +35,9 @@ type spaceInvadersMachine struct {
 	cyclesRan          uint64
 	lastInterruptCycle uint64
 	whichInterrupt     int
+
+	pause     uint8
+	syncPause *sync.WaitGroup
 }
 
 type gameIO struct {
@@ -71,21 +75,17 @@ func Main(cpu *machine.Cpu) {
 }
 
 func loop(window *sdl.Window, texture *sdl.Texture, gameMachine *spaceInvadersMachine) {
-	go gameMachine.internalUpdate()
-
 	renderer, _ := window.GetRenderer()
 	running := true
+
+	go keyboardUpdate(gameMachine, &running)
+	go gameMachine.internalUpdate()
+
 	for running {
-		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-			switch ev := event.(type) {
-			case *sdl.QuitEvent:
-				println("Quit")
-				running = false
-				break
-			case *sdl.KeyboardEvent:
-				gameMachine.handleKey(ev)
-			}
+		if gameMachine.pause == 2 {
+			gameMachine.syncPause.Wait()
 		}
+
 		renderer.Clear()
 		updateTexture(texture, gameMachine)
 		renderer.Copy(texture, nil, nil)
@@ -99,6 +99,7 @@ func initEmulation(cpu *machine.Cpu) *spaceInvadersMachine {
 		cpu:            cpu,
 		whichInterrupt: 1,
 		bitmap:         make([]byte, width*height*4),
+		syncPause:      &sync.WaitGroup{},
 	}
 	cpu.InterruptEnabled = true
 	cpu.IO_handler = &gameIO{}
@@ -120,6 +121,10 @@ func (gameMachine *spaceInvadersMachine) internalUpdate() {
 	// }(gameMachine)
 
 	for {
+		if gameMachine.pause == 2 {
+			fmt.Println("pause")
+			gameMachine.syncPause.Wait()
+		}
 		gameMachine.cpu.Step()
 		op := gameMachine.cpu.GetCurrentOP()
 		cycles := op.Cycles
@@ -136,6 +141,35 @@ func (gameMachine *spaceInvadersMachine) internalUpdate() {
 		}
 
 		gameMachine.cyclesRan += uint64(cycles)
+	}
+}
+
+func keyboardUpdate(gameMachine *spaceInvadersMachine, running *bool) {
+	for {
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch ev := event.(type) {
+			case *sdl.QuitEvent:
+				println("Quit")
+				*running = false
+				break
+			case *sdl.KeyboardEvent:
+				gameMachine.handleKey(ev)
+
+				if ev.Keysym.Sym == sdl.K_p {
+					if ev.State == sdl.PRESSED {
+						if gameMachine.pause == 0 {
+							gameMachine.pause = 2
+							gameMachine.syncPause.Add(1)
+						} else if gameMachine.pause == 2 {
+							gameMachine.syncPause.Done()
+							gameMachine.pause = 0
+						}
+						break
+					}
+				}
+
+			}
+		}
 	}
 
 }
@@ -252,5 +286,6 @@ func (gameMachine *spaceInvadersMachine) handleKey(ev *sdl.KeyboardEvent) {
 	} else {
 		result = *port & getClearBit(ev.Keysym.Sym)
 	}
+
 	*port = result
 }
